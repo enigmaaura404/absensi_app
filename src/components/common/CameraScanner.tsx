@@ -97,11 +97,20 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
     'Posisikan kepala tetap tegak & stabil',
   ];
 
+  const [isFlashing, setIsFlashing] = useState<boolean>(false);
+
   const toggleCamera = () => {
     setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
   };
 
+  const handleRetake = () => {
+    setCapturedPhoto(null);
+  };
+
   const handleCapture = () => {
+    setIsFlashing(true);
+    setTimeout(() => setIsFlashing(false), 200);
+
     if (videoRef.current && hasCameraPermission && videoRef.current.videoWidth > 0) {
       try {
         const canvas = document.createElement('canvas');
@@ -109,14 +118,17 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
         canvas.height = videoRef.current.videoHeight || 480;
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          // Mirror horizontally to match mirrored preview (-scale-x-100)
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
           ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
           setCapturedPhoto(dataUrl);
           if (onCapture) onCapture(dataUrl);
           return;
         }
       } catch (e) {
-        // fallback
+        console.warn('Canvas capture fallback:', e);
       }
     }
     // High-resolution fallback selfie
@@ -137,12 +149,26 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
           videoRef.current?.play().catch(() => {});
         }}
         className={`absolute inset-0 w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
-          hasCameraPermission ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none -z-10'
+          hasCameraPermission && !capturedPhoto ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none -z-10'
         }`}
       />
 
+      {/* Captured Photo Freeze-Frame Preview */}
+      {capturedPhoto && (
+        <img
+          src={capturedPhoto}
+          alt="Hasil Foto Selfie"
+          className="absolute inset-0 w-full h-full object-cover z-5 animate-in fade-in zoom-in-95 duration-200"
+        />
+      )}
+
+      {/* Shutter Camera Flash Effect */}
+      {isFlashing && (
+        <div className="absolute inset-0 bg-white z-40 animate-out fade-out duration-200 pointer-events-none" />
+      )}
+
       {/* Fallback Simulation UI when camera permission is not yet granted or denied */}
-      {!hasCameraPermission && (
+      {!hasCameraPermission && !capturedPhoto && (
         <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neutral-900 via-neutral-800 to-neutral-950 overflow-hidden z-0">
           {/* Simulated realistic camera visual with subtle pulse */}
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
@@ -157,15 +183,19 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
         </div>
       )}
 
-      {/* Laser Scanning Animation */}
-      {isScanning && (
+      {/* Laser Scanning Animation (active when not captured) */}
+      {isScanning && !capturedPhoto && (
         <div className="absolute inset-x-8 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-scanline pointer-events-none z-10" />
       )}
 
       {/* Oval / Face Guideline Overlay */}
       {showOverlay && (
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6 z-10">
-          <div className="w-56 h-72 sm:w-64 sm:h-80 rounded-[45%] border-2 border-emerald-400/80 shadow-[0_0_24px_rgba(52,211,153,0.3)] relative">
+          <div
+            className={`w-56 h-72 sm:w-64 sm:h-80 rounded-[45%] border-2 shadow-[0_0_24px_rgba(52,211,153,0.3)] relative transition-colors duration-300 ${
+              capturedPhoto ? 'border-emerald-400 bg-emerald-500/10' : 'border-emerald-400/80'
+            }`}
+          >
             {/* Corner brackets */}
             <div className="absolute -top-2 -left-2 w-5 h-5 border-t-2 border-l-2 border-emerald-400" />
             <div className="absolute -top-2 -right-2 w-5 h-5 border-t-2 border-r-2 border-emerald-400" />
@@ -187,14 +217,21 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
         </div>
       </div>
 
-      {/* Liveness Guidance Prompt */}
+      {/* Liveness Guidance Prompt OR Captured Confirmation */}
       <div className="absolute bottom-16 inset-x-4 z-20 flex flex-col items-center text-center pointer-events-none">
-        <div className="px-4 py-1.5 rounded-full bg-emerald-500/90 text-white font-medium text-xs shadow-lg backdrop-blur-sm flex items-center gap-1.5 animate-bounce">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>{livenessPrompts[livenessStep]}</span>
-        </div>
+        {capturedPhoto ? (
+          <div className="px-4 py-1.5 rounded-full bg-emerald-600 text-white font-bold text-xs shadow-lg backdrop-blur-sm flex items-center gap-1.5 animate-in zoom-in-95">
+            <Check className="w-4 h-4" />
+            <span>Foto Berhasil Diambil!</span>
+          </div>
+        ) : (
+          <div className="px-4 py-1.5 rounded-full bg-emerald-500/90 text-white font-medium text-xs shadow-lg backdrop-blur-sm flex items-center gap-1.5 animate-bounce">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{livenessPrompts[livenessStep]}</span>
+          </div>
+        )}
         <p className="mt-2 text-[11px] text-white/80 font-mono tracking-tight bg-black/40 px-2 py-0.5 rounded backdrop-blur-xs">
-          {title}
+          {capturedPhoto ? 'Foto tersimpan dan siap diproses' : title}
         </p>
       </div>
 
@@ -203,22 +240,39 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
         <button
           type="button"
           onClick={toggleCamera}
-          className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 text-white backdrop-blur-md transition-all active:scale-95"
-          title="Ganti Kamera"
+          className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 text-white backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+          title="Ganti Kamera Depan/Belakang"
         >
           <RefreshCw className="w-4 h-4" />
         </button>
 
-        <button
-          type="button"
-          onClick={handleCapture}
-          className="px-4 py-2 rounded-full bg-white text-neutral-900 font-semibold text-xs flex items-center gap-2 shadow-lg hover:bg-neutral-100 transition-all active:scale-95"
-        >
-          <Camera className="w-3.5 h-3.5" />
-          <span>Ambil Foto</span>
-        </button>
+        {capturedPhoto ? (
+          <button
+            type="button"
+            onClick={handleRetake}
+            className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Foto Ulang</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleCapture}
+            className="px-5 py-2.5 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs flex items-center gap-2 shadow-xl transition-all active:scale-95 cursor-pointer"
+          >
+            <Camera className="w-4 h-4 text-emerald-600" />
+            <span>Ambil Foto</span>
+          </button>
+        )}
 
-        <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
+        <div
+          className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
+            capturedPhoto
+              ? 'bg-emerald-500 text-white border-emerald-400'
+              : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-400'
+          }`}
+        >
           <Check className="w-4 h-4" />
         </div>
       </div>

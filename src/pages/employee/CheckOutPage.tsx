@@ -33,6 +33,7 @@ export const CheckOutPage: React.FC<CheckOutPageProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [checkOutTimestamp, setCheckOutTimestamp] = useState('');
   const [calculatedDuration, setCalculatedDuration] = useState('0j 00m');
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
@@ -227,7 +228,10 @@ export const CheckOutPage: React.FC<CheckOutPageProps> = ({
 
         {/* Camera Preview */}
         <div className="mb-5">
-          <CameraScanner title="Verifikasi biometrik sebelum pulang" />
+          <CameraScanner
+            title="Verifikasi biometrik sebelum pulang"
+            onCapture={(img) => setCapturedImage(img)}
+          />
         </div>
 
         {/* Verification Checkpoints */}

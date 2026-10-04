@@ -40,6 +40,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onNavigate, onUp
   // Face update modal
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const [faceUpdateSuccess, setFaceUpdateSuccess] = useState(false);
+  const [capturedFace, setCapturedFace] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>(user.avatar);
 
   // Device reset modal
   const [isDeviceResetModalOpen, setIsDeviceResetModalOpen] = useState(false);
@@ -54,6 +56,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onNavigate, onUp
   };
 
   const handleCaptureFace = () => {
+    if (capturedFace) {
+      setAvatarUrl(capturedFace);
+      user.avatar = capturedFace;
+    }
     setIsFaceModalOpen(false);
     setFaceUpdateSuccess(true);
     setTimeout(() => setFaceUpdateSuccess(false), 3000);
@@ -73,7 +79,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onNavigate, onUp
           <div className="relative">
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-neutral-200 shadow-sm">
               <img
-                src={user.avatar}
+                src={avatarUrl}
                 alt={user.name}
                 className="w-full h-full object-cover"
               />
@@ -291,7 +297,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onNavigate, onUp
         <div className="bg-white rounded-3xl border border-neutral-200 p-6 sm:p-8 shadow-2xs space-y-6 animate-in fade-in duration-150">
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 border-b border-neutral-100 pb-6">
             <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md relative bg-neutral-900">
-              <img src={user.avatar} alt="Face Reference" className="w-full h-full object-cover" />
+              <img src={avatarUrl} alt="Face Reference" className="w-full h-full object-cover" />
               <div className="absolute inset-0 border border-emerald-400/50 rounded-2xl pointer-events-none" />
             </div>
 
@@ -395,19 +401,25 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onNavigate, onUp
           maxWidth="md"
         >
           <div className="space-y-4">
-            <CameraScanner title="Tatap kamera dan tahan posisi" />
+            <CameraScanner
+              title="Tatap kamera dan tahan posisi"
+              onCapture={(photo) => setCapturedFace(photo)}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setIsFaceModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                onClick={() => {
+                  setCapturedFace(null);
+                  setIsFaceModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleCaptureFace}
-                className="px-5 py-2 rounded-xl bg-neutral-900 text-white text-xs font-semibold shadow-xs"
+                className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
               >
                 Simpan Wajah
               </button>
