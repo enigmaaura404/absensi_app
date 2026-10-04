@@ -13,27 +13,78 @@ import {
   Building,
 } from 'lucide-react';
 
-export const SystemSettingsPage: React.FC = () => {
+export interface SystemSettings {
+  gracePeriod: number;
+  requiredSelfie: boolean;
+  faceVerification: boolean;
+  livenessDetection: boolean;
+  gpsRequired: boolean;
+  geofenceRequired: boolean;
+  companyName: string;
+  timezone: string;
+  workStartTime: string;
+  workEndTime: string;
+}
+
+interface SystemSettingsPageProps {
+  settings?: SystemSettings;
+  onSaveSettings?: (settings: SystemSettings) => void;
+}
+
+const DEFAULT_SETTINGS: SystemSettings = {
+  gracePeriod: 10,
+  requiredSelfie: true,
+  faceVerification: true,
+  livenessDetection: true,
+  gpsRequired: true,
+  geofenceRequired: true,
+  companyName: 'PT Teknologi Absensi Mandiri',
+  timezone: 'Asia/Jakarta (WIB)',
+  workStartTime: '08:00',
+  workEndTime: '17:00',
+};
+
+export const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({
+  settings = DEFAULT_SETTINGS,
+  onSaveSettings,
+}) => {
   const [activeTab, setActiveTab] = useState<'General' | 'Attendance' | 'Security' | 'Notification' | 'Storage'>('Attendance');
 
   // Attendance settings states (Prompt Specified)
-  const [gracePeriod, setGracePeriod] = useState('10');
-  const [requiredSelfie, setRequiredSelfie] = useState(true);
-  const [faceVerification, setFaceVerification] = useState(true);
-  const [livenessDetection, setLivenessDetection] = useState(true);
-  const [gpsRequired, setGpsRequired] = useState(true);
-  const [geofenceRequired, setGeofenceRequired] = useState(true);
+  const [gracePeriod, setGracePeriod] = useState(settings.gracePeriod.toString());
+  const [requiredSelfie, setRequiredSelfie] = useState(settings.requiredSelfie);
+  const [faceVerification, setFaceVerification] = useState(settings.faceVerification);
+  const [livenessDetection, setLivenessDetection] = useState(settings.livenessDetection);
+  const [gpsRequired, setGpsRequired] = useState(settings.gpsRequired);
+  const [geofenceRequired, setGeofenceRequired] = useState(settings.geofenceRequired);
 
   // General settings
-  const [companyName, setCompanyName] = useState('PT Teknologi Absensi Mandiri');
-  const [timezone, setTimezone] = useState('Asia/Jakarta (WIB)');
-  const [workStartTime, setWorkStartTime] = useState('08:00');
-  const [workEndTime, setWorkEndTime] = useState('17:00');
+  const [companyName, setCompanyName] = useState(settings.companyName);
+  const [timezone, setTimezone] = useState(settings.timezone);
+  const [workStartTime, setWorkStartTime] = useState(settings.workStartTime);
+  const [workEndTime, setWorkEndTime] = useState(settings.workEndTime);
 
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const updatedSettings: SystemSettings = {
+      gracePeriod: parseInt(gracePeriod, 10) || 0,
+      requiredSelfie,
+      faceVerification,
+      livenessDetection,
+      gpsRequired,
+      geofenceRequired,
+      companyName,
+      timezone,
+      workStartTime,
+      workEndTime,
+    };
+
+    if (onSaveSettings) {
+      onSaveSettings(updatedSettings);
+    }
+
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
   };

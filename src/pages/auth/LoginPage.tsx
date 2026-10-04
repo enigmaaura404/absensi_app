@@ -4,56 +4,59 @@ import {
   ShieldCheck,
   Lock,
   Mail,
-  UserCheck,
   CheckCircle2,
   ArrowRight,
   Sparkles,
   ArrowLeft,
+  AlertCircle,
 } from 'lucide-react';
-import { UserRole } from '../../types';
+import { authService } from '../../services/auth/auth.service';
+import { AuthUser } from '../../services/auth/auth.types';
 
 interface LoginPageProps {
-  onLogin: (role: UserRole) => void;
+  onLogin: (user: AuthUser) => void;
   onBackToLanding?: () => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }) => {
-  const [email, setEmail] = useState('budi@example.com');
-  const [password, setPassword] = useState('••••••••••••');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onLogin('Employee');
-    }, 600);
-  };
 
-  const handleQuickLogin = (role: UserRole) => {
-    setIsLoading(true);
-    if (role === 'Employee') {
-      setEmail('budi@example.com');
-    } else if (role === 'HR') {
-      setEmail('siti.rahma@company.id');
-    } else {
-      setEmail('andi.wijaya@company.id');
-    }
-    setTimeout(() => {
+    try {
+      const user = await authService.authenticate({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (!user) {
+        // Deliberately vague — do not reveal which field is wrong
+        setError('Email atau password salah.');
+        return;
+      }
+
+      onLogin(user);
+    } catch (err) {
+      setError('Terjadi kesalahan sistem. Coba lagi.');
+      console.error('[LoginPage] Authentication error:', err);
+    } finally {
       setIsLoading(false);
-      onLogin(role);
-    }, 400);
+    }
   };
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-neutral-50 text-neutral-900">
-      {/* Left Column: Brand & Security Overview */}
+      {/* Left Column: Brand & Feature Overview */}
       <div className="lg:w-1/2 bg-neutral-950 text-white p-8 sm:p-12 lg:p-16 flex flex-col justify-between relative overflow-hidden">
         {/* Subtle grid backdrop */}
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
-        
+
         {/* Top Logo & Back Button */}
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -86,7 +89,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
           )}
         </div>
 
-        {/* Center Tagline & Feature List */}
+        {/* Center Tagline & Features */}
         <div className="relative z-10 my-12 max-w-lg">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-neutral-300 mb-6 backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
@@ -101,30 +104,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
           </p>
 
           <div className="mt-8 space-y-3.5">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
+            {[
+              'Anti-Spoofing & Liveness Detection 3D',
+              'Geofence Radius Presisi & Deteksi Fake GPS',
+              'Single Device Binding & Audit Trail Forensik',
+            ].map((feature) => (
+              <div key={feature} className="flex items-center gap-3">
+                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <span className="text-xs sm:text-sm text-neutral-200">{feature}</span>
               </div>
-              <span className="text-xs sm:text-sm text-neutral-200">
-                Anti-Spoofing & Liveness Detection 3D
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <span className="text-xs sm:text-sm text-neutral-200">
-                Geofence Radius Presisi & Deteksi Fake GPS
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <span className="text-xs sm:text-sm text-neutral-200">
-                Single Device Binding & Audit Trail Forensik
-              </span>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -132,13 +123,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
         <div className="relative z-10 pt-6 border-t border-white/10 flex items-center justify-between text-xs text-neutral-400">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>ISO 27001 Certified & SOC 2 Type II</span>
+            <span>Role-Based Access Control &amp; Audit Trail</span>
           </div>
           <span>PT Teknologi Absensi Mandiri</span>
         </div>
       </div>
 
-      {/* Right Column: Clean Enterprise Sign In Form */}
+      {/* Right Column: Sign In Form */}
       <div className="lg:w-1/2 flex items-center justify-center p-6 sm:p-12 lg:p-16 bg-white">
         <div className="w-full max-w-md">
           <div className="mb-8">
@@ -150,9 +141,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            {/* Error Alert */}
+            {error && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+              <label htmlFor="login-email" className="block text-xs font-semibold text-neutral-700 mb-1.5">
                 Alamat Email Kantor
               </label>
               <div className="relative">
@@ -160,10 +162,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
                   <Mail className="w-4 h-4" />
                 </div>
                 <input
+                  id="login-email"
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError(null);
+                  }}
                   placeholder="nama@company.id"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
                 />
@@ -172,7 +179,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-neutral-700">
+                <label htmlFor="login-password" className="block text-xs font-semibold text-neutral-700">
                   Kata Sandi
                 </label>
                 <a
@@ -188,34 +195,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
+                  id="login-password"
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError(null);
+                  }}
                   placeholder="••••••••••••"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-neutral-200 text-xs sm:text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all font-mono"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 accent-neutral-900"
-                />
-                <span className="text-xs text-neutral-600 select-none">
-                  Ingat saya di perangkat ini
-                </span>
-              </label>
-            </div>
-
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full mt-2 py-2.5 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 active:bg-neutral-950 text-white text-xs sm:text-sm font-semibold tracking-wide shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              id="login-submit"
+              disabled={isLoading || !email || !password}
+              className="w-full mt-2 py-2.5 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 active:bg-neutral-950 text-white text-xs sm:text-sm font-semibold tracking-wide shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -229,45 +228,60 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
                 </>
               )}
             </button>
-          </form>
 
-          {/* Quick Demo Access Switchers */}
-          <div className="mt-8 pt-6 border-t border-neutral-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 text-center mb-3">
-              Akses Cepat Mode Demo
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('Employee')}
-                className="p-2.5 rounded-xl border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-50 transition-all text-center flex flex-col items-center"
-              >
-                <UserCheck className="w-4 h-4 text-emerald-600 mb-1" />
-                <span className="text-[11px] font-bold text-neutral-900">Budi Santoso</span>
-                <span className="text-[10px] text-neutral-500">Employee</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('HR')}
-                className="p-2.5 rounded-xl border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-50 transition-all text-center flex flex-col items-center"
-              >
-                <ShieldCheck className="w-4 h-4 text-blue-600 mb-1" />
-                <span className="text-[11px] font-bold text-neutral-900">Siti Rahma</span>
-                <span className="text-[10px] text-neutral-500">HR Admin</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('Superadmin')}
-                className="p-2.5 rounded-xl border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-50 transition-all text-center flex flex-col items-center"
-              >
-                <Sparkles className="w-4 h-4 text-purple-600 mb-1" />
-                <span className="text-[11px] font-bold text-neutral-900">Andi Wijaya</span>
-                <span className="text-[10px] text-neutral-500">Superadmin</span>
-              </button>
+            {/* Quick Demo Accounts Selector (Seeded Database Accounts) */}
+            <div className="mt-6 pt-5 border-t border-neutral-100">
+              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2.5">
+                Akun Demo Terdaftar (Live Database):
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('andi.wijaya@company.id');
+                    setPassword('Superadmin123!');
+                  }}
+                  className="p-2 text-left rounded-xl border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-white transition-all cursor-pointer group"
+                >
+                  <div className="font-semibold text-neutral-900 group-hover:text-black">Superadmin</div>
+                  <div className="text-[11px] text-neutral-500 truncate">andi.wijaya@company.id</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('siti.rahma@company.id');
+                    setPassword('HR123!');
+                  }}
+                  className="p-2 text-left rounded-xl border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-white transition-all cursor-pointer group"
+                >
+                  <div className="font-semibold text-neutral-900 group-hover:text-black">HR Admin</div>
+                  <div className="text-[11px] text-neutral-500 truncate">siti.rahma@company.id</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('ahmad.fauzi@company.id');
+                    setPassword('Supervisor123!');
+                  }}
+                  className="p-2 text-left rounded-xl border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-white transition-all cursor-pointer group"
+                >
+                  <div className="font-semibold text-neutral-900 group-hover:text-black">Supervisor</div>
+                  <div className="text-[11px] text-neutral-500 truncate">ahmad.fauzi@company.id</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('budi.santoso@company.id');
+                    setPassword('Employee123!');
+                  }}
+                  className="p-2 text-left rounded-xl border border-neutral-200 hover:border-neutral-900 bg-neutral-50 hover:bg-white transition-all cursor-pointer group"
+                >
+                  <div className="font-semibold text-neutral-900 group-hover:text-black">Karyawan</div>
+                  <div className="text-[11px] text-neutral-500 truncate">budi.santoso@company.id</div>
+                </button>
+              </div>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>

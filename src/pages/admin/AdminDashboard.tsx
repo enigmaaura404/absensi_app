@@ -14,7 +14,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
-import { AttendanceRecord, RequestItem, SecurityEventItem } from '../../types';
+import { AttendanceRecord, RequestItem, SecurityEventItem, User } from '../../types';
 import { StatCard } from '../../components/common/StatCard';
 import { StatusBadge } from '../../components/common/StatusBadge';
 
@@ -22,6 +22,8 @@ interface AdminDashboardProps {
   todayAttendance: AttendanceRecord[];
   pendingRequests: RequestItem[];
   securityEvents: SecurityEventItem[];
+  employees?: User[];
+  historyAttendance?: AttendanceRecord[];
   onNavigate: (route: string) => void;
   onApproveRequest: (id: string) => void;
   onRejectRequest: (id: string) => void;
@@ -31,23 +33,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   todayAttendance,
   pendingRequests,
   securityEvents,
+  employees = [],
+  historyAttendance = [],
   onNavigate,
   onApproveRequest,
   onRejectRequest,
 }) => {
-  const totalEmployees = 124;
-  const presentCount = 108;
-  const lateCount = 8;
-  const onLeaveCount = 4;
-  const absentCount = 4;
+  // Derive live KPI counts from real today attendance data
+  const totalEmployees = employees.length;
+  const presentCount = todayAttendance.filter((r) => r.status === 'Hadir').length;
+  const lateCount = todayAttendance.filter((r) => r.status === 'Terlambat').length;
+  const onLeaveCount = todayAttendance.filter((r) =>
+    ['Cuti', 'Izin', 'Sakit', 'Dinas'].includes(r.status)
+  ).length;
+  // Absent = employees registered today who have no check-in record at all
+  const recordedEmployeeIds = new Set(todayAttendance.map((r) => r.employeeId));
+  const activeEmployees = employees.filter((e) => e.status === 'Active');
+  const absentCount = activeEmployees.filter((e) => !recordedEmployeeIds.has(e.employeeId)).length;
 
-  const weeklyTrend = [
-    { day: 'Sen', hadir: 114, late: 6, leave: 4 },
-    { day: 'Sel', hadir: 112, late: 7, leave: 5 },
-    { day: 'Rab', hadir: 115, late: 4, leave: 5 },
-    { day: 'Kam', hadir: 110, late: 9, leave: 5 },
-    { day: 'Jum (Hari ini)', hadir: 108, late: 8, leave: 8 },
-  ];
+  const attendanceRate = totalEmployees > 0
+    ? Math.round(((presentCount + lateCount) / totalEmployees) * 100)
+    : 0;
+
+  // Real date for the greeting
+  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  const weeklyTrend = React.useMemo(() => {
+    const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const result = [];
+    const allRecords = [...historyAttendance, ...todayAttendance];
+
+    for (let i = 4; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = i === 0 ? `${days[d.getDay()]} (Hari ini)` : days[d.getDay()];
+
+      const dayRecs = allRecords.filter((r) => r.date === dateStr);
+      const hadir = dayRecs.filter((r) => r.status === 'Hadir').length;
+      const late = dayRecs.filter((r) => r.status === 'Terlambat').length;
+      const leave = dayRecs.filter((r) => ['Cuti', 'Izin', 'Sakit', 'Dinas'].includes(r.status)).length;
+
+      result.push({ day: dayName, hadir, late, leave });
+    }
+    return result;
+  }, [historyAttendance, todayAttendance]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -58,7 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             Good Morning, HR & Management Team 👋
           </h2>
           <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-            Ringkasan kehadiran operasional perusahaan hari ini • Jumat, 02 Oktober 2026
+            Ringkasan kehadiran operasional perusahaan hari ini • {todayFormatted}
           </p>
         </div>
 
@@ -93,10 +125,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <StatCard
           title="Hadir"
           value={presentCount}
-          subtext="87.1% tingkat kehadiran"
+          subtext={`${attendanceRate}% tingkat kehadiran`}
           icon={UserCheck}
           variant="success"
-          trend={{ value: '+2%', isPositive: true }}
           onClick={() => onNavigate('riwayat')}
         />
 

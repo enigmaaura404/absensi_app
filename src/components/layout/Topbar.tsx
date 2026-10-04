@@ -3,26 +3,22 @@ import {
   Bell,
   CheckCircle,
   Clock,
-  MapPin,
   Menu,
-  Shield,
   User as UserIcon,
   ChevronDown,
-  Sparkles,
   LogOut,
   AlertTriangle,
   Info,
-  Command,
   Search,
   Globe,
+  Settings,
+  Sparkles,
 } from 'lucide-react';
-import { NotificationItem, User, UserRole } from '../../types';
+import { NotificationItem, User } from '../../types';
 
 interface TopbarProps {
   currentRoute: string;
   onToggleSidebar: () => void;
-  userRole: UserRole;
-  onChangeRole: (role: UserRole) => void;
   notifications: NotificationItem[];
   onMarkNotificationAsRead: (id: string) => void;
   onMarkAllNotificationsRead: () => void;
@@ -30,14 +26,12 @@ interface TopbarProps {
   onNavigate: (route: string) => void;
   onOpenCommandMenu?: () => void;
   onGoToLanding?: () => void;
-  currentUser?: User;
+  currentUser: User;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
   currentRoute,
   onToggleSidebar,
-  userRole,
-  onChangeRole,
   notifications,
   onMarkNotificationAsRead,
   onMarkAllNotificationsRead,
@@ -51,6 +45,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState<boolean>(false);
   const [notificationTab, setNotificationTab] = useState<'All' | 'Attendance' | 'Approval' | 'Security'>('All');
+
+  // suppress unused warning — notificationTab used for future filtering
+  void notificationTab;
 
   useEffect(() => {
     const updateTime = () => {
@@ -142,9 +139,9 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Quick Search Button, Clock, Notifications, Profile / Role Switcher */}
+      {/* Right: Quick Search, Clock, Notifications, Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Landing Page Public Switcher */}
+        {/* Landing Page Button */}
         {onGoToLanding && (
           <button
             type="button"
@@ -157,7 +154,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         )}
 
-        {/* Global Quick Search Button (Ctrl+K) */}
+        {/* Global Quick Search (Ctrl+K) */}
         {onOpenCommandMenu && (
           <button
             type="button"
@@ -250,24 +247,26 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </div>
 
-        {/* Profile / Role Selector Dropdown */}
+        {/* Profile Dropdown — Read-Only Identity */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-2 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 transition-all shadow-2xs"
+            aria-label="Menu profil"
           >
             <div className="w-6 h-6 rounded-full overflow-hidden bg-neutral-200 shrink-0">
               <img
-                src={currentUser?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"}
-                alt="User"
+                src={currentUser.avatar}
+                alt={currentUser.name}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="hidden sm:block text-left">
-              <span className="text-xs font-bold text-neutral-900 block leading-tight">
-                {userRole}
+              <span className="text-xs font-bold text-neutral-900 block leading-tight truncate max-w-28">
+                {currentUser.name}
               </span>
+              <span className="text-[10px] text-neutral-500 leading-none">{currentUser.role}</span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-neutral-400 hidden sm:block" />
           </button>
@@ -275,35 +274,53 @@ export const Topbar: React.FC<TopbarProps> = ({
           {showProfileMenu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowProfileMenu(false)} />
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-neutral-200 shadow-xl z-50 p-2 animate-in fade-in-50 zoom-in-95 duration-100">
-                <div className="px-3 py-2 border-b border-neutral-100 mb-1">
-                  <p className="text-xs font-bold text-neutral-900">{currentUser?.name || 'Budi Santoso'}</p>
-                  <p className="text-[10px] text-neutral-500">Active Role: {userRole}</p>
+              <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl border border-neutral-200 shadow-xl z-50 p-2 animate-in fade-in-50 zoom-in-95 duration-100">
+
+                {/* User Identity — Read-Only */}
+                <div className="px-3 py-3 border-b border-neutral-100 mb-1">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-neutral-200 shrink-0">
+                      <img
+                        src={currentUser.avatar}
+                        alt={currentUser.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-neutral-900 truncate">{currentUser.name}</p>
+                      <p className="text-[10px] text-neutral-500 truncate">{currentUser.email}</p>
+                    </div>
+                  </div>
+                  <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                    {currentUser.role}
+                  </span>
                 </div>
 
-                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                  Ganti Hak Akses (Demo)
-                </div>
-                {(['Employee', 'Supervisor', 'Manager', 'HR', 'Admin', 'Superadmin'] as UserRole[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => {
-                      onChangeRole(r);
-                      setShowProfileMenu(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
-                      userRole === r
-                        ? 'bg-neutral-900 text-white font-semibold'
-                        : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <span>{r}</span>
-                    {userRole === r && <span className="text-[10px]">Aktif</span>}
-                  </button>
-                ))}
+                {/* Actions */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onNavigate('profil');
+                  }}
+                  className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
+                >
+                  <UserIcon className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Profil Saya</span>
+                </button>
 
-                <div className="my-1 border-t border-neutral-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    onNavigate('pengaturan');
+                  }}
+                  className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
+                >
+                  <Settings className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>Pengaturan</span>
+                </button>
+
                 {onGoToLanding && (
                   <button
                     type="button"
@@ -311,24 +328,14 @@ export const Topbar: React.FC<TopbarProps> = ({
                       setShowProfileMenu(false);
                       onGoToLanding();
                     }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-100 flex items-center gap-2"
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                   >
                     <Globe className="w-3.5 h-3.5 text-neutral-500" />
                     <span>Lihat Landing Page</span>
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowProfileMenu(false);
-                    onNavigate('profil');
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-100 flex items-center gap-2"
-                >
-                  <UserIcon className="w-3.5 h-3.5" />
-                  <span>Pengaturan Profil</span>
-                </button>
+                <div className="my-1 border-t border-neutral-100" />
 
                 <button
                   type="button"
@@ -336,7 +343,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                     setShowProfileMenu(false);
                     onLogout();
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                  className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Keluar (Logout)</span>

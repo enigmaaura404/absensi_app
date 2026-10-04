@@ -3,7 +3,7 @@ import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export interface ToastMessage {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
 }
@@ -23,12 +23,14 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
           success: <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />,
           error: <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />,
           info: <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />,
+          warning: <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />,
         };
 
         const bgColors = {
           success: 'bg-emerald-50/95 border-emerald-200 text-emerald-900',
           error: 'bg-rose-50/95 border-rose-200 text-rose-900',
           info: 'bg-blue-50/95 border-blue-200 text-blue-900',
+          warning: 'bg-amber-50/95 border-amber-200 text-amber-900',
         };
 
         return (

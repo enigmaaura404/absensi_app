@@ -26,12 +26,14 @@ import { ConfirmationModal } from '../../components/common/ConfirmationModal';
 interface RiwayatKehadiranPageProps {
   history: AttendanceRecord[];
   isAdmin?: boolean;
+  currentEmployeeId?: string;
   onBulkDelete?: (ids: string[]) => void;
 }
 
 export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
   history,
   isAdmin = false,
+  currentEmployeeId,
   onBulkDelete,
 }) => {
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
@@ -46,7 +48,12 @@ export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
 
   const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
 
-  const filteredHistory = history.filter((item) => {
+  // Enforce ownership isolation: Employee only views their own records; Admins/HR view all
+  const scopedHistory = isAdmin || !currentEmployeeId
+    ? history
+    : history.filter((item) => item.employeeId === currentEmployeeId);
+
+  const filteredHistory = scopedHistory.filter((item) => {
     const matchesStatus = statusFilter === 'Semua' || item.status === statusFilter;
     const matchesSearch =
       item.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -120,8 +127,13 @@ export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Bulk Delete action - triggers confirmation modal
+  // Bulk Delete action - triggers confirmation modal (Restricted to Admin / HR only)
   const handleConfirmBulkDelete = () => {
+    if (!isAdmin) {
+      setToastMessage('Akses Ditolak: Karyawan tidak memiliki izin untuk menghapus catatan presensi.');
+      setIsBulkDeleteModalOpen(false);
+      return;
+    }
     if (onBulkDelete) {
       onBulkDelete(selectedIds);
     }
@@ -194,7 +206,9 @@ export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
                 {selectedIds.length} Catatan Absensi Terpilih
               </p>
               <p className="text-[11px] text-neutral-400">
-                Pilih aksi massal untuk diekspor atau dikelola oleh admin
+                {isAdmin
+                  ? 'Pilih aksi massal untuk diekspor atau dikelola oleh admin'
+                  : 'Pilih catatan riwayat presensi untuk diekspor ke CSV'}
               </p>
             </div>
           </div>
@@ -209,14 +223,17 @@ export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
               <span>Export Selection</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setIsBulkDeleteModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-all active:scale-95 shadow-xs"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Bulk Delete</span>
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleteModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-all active:scale-95 shadow-xs"
+                title="Hapus catatan presensi (Khusus Admin / HR)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Bulk Delete</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -450,8 +467,8 @@ export const RiwayatKehadiranPage: React.FC<RiwayatKehadiranPageProps> = ({
         </div>
       )}
 
-      {/* Bulk Delete Confirmation Modal */}
-      {isBulkDeleteModalOpen && (
+      {/* Bulk Delete Confirmation Modal (Admin only) */}
+      {isBulkDeleteModalOpen && isAdmin && (
         <ConfirmationModal
           isOpen={true}
           onClose={() => setIsBulkDeleteModalOpen(false)}

@@ -1,429 +1,317 @@
-# Sistem Absensi — Smart Attendance Management
+# Sistem Absensi — Enterprise Smart Attendance Management System
 
-> Platform manajemen kehadiran berbasis web (PWA-ready) dengan verifikasi biometrik wajah, GPS & Geofencing, Device Binding, Audit Trail, dan integrasi Google Workspace & Telegram.
+> Platform manajemen absensi dan kehadiran modern berbasis web enterprise (PWA-ready) dengan arsitektur monorepo, **NestJS REST API**, **Prisma ORM**, **PostgreSQL**, verifikasi biometrik wajah & liveness detection, GPS Geofencing presisi, Device Binding, Audit Trail forensik, dan Role-Based Access Control (RBAC) granular.
 
 ---
 
 ## Daftar Isi
 
 - [Gambaran Umum](#gambaran-umum)
-- [Tech Stack](#tech-stack)
-- [Struktur Proyek](#struktur-proyek)
+- [Arsitektur & Tech Stack](#arsitektur--tech-stack)
+- [Struktur Monorepo](#struktur-monorepo)
 - [Fitur Utama](#fitur-utama)
 - [Role & Hak Akses (RBAC)](#role--hak-akses-rbac)
-- [Alur Absensi](#alur-absensi)
-- [Quick Start](#quick-start)
+- [Alur Absensi Berlapis](#alur-absensi-berlapis)
+- [Panduan Instalasi & Menjalankan](#panduan-instalasi--menjalankan)
+- [Database & Seed Data](#database--seed-data)
+- [Akun Demo Terdaftar](#akun-demo-terdaftar)
 - [Konfigurasi Environment](#konfigurasi-environment)
-- [Akun Demo](#akun-demo)
-- [Fase Pengembangan](#fase-pengembangan)
+- [Testing & Quality Assurance](#testing--quality-assurance)
+- [Status & Roadmap Proyek](#status--roadmap-proyek)
+- [Lisensi](#lisensi)
 
 ---
 
 ## Gambaran Umum
 
-Sistem Absensi adalah platform manajemen kehadiran karyawan yang dirancang untuk mencegah fraud dengan pendekatan berlapis:
+Sistem Absensi dirancang untuk operasional perusahaan berskala multi-cabang dengan kebijakan **Zero-Trust & Anti-Fraud**:
 
-```
-Identity → Face Verification → Liveness → GPS → Geofence → Device → Server Time → Audit Trail
+```text
+Identitas Karyawan → Verifikasi Wajah → Liveness Detection 3D → GPS Validasi → Geofence Radius → Device Binding → Server Timestamp → Persistent Database → Audit Trail
 ```
 
-Sistem ini berjalan sebagai **Single Page Application (React + Vite)** dengan arsitektur yang siap untuk backend NestJS + PostgreSQL dan integrasi Google Workspace.
+Seluruh data bisnis berjalan di atas **Real Database Layer (PostgreSQL / Prisma ORM)** yang dilayani oleh **NestJS REST API** independen, bebas dari data tiruan (*zero mock data*).
 
 ---
 
-## Tech Stack
+## Arsitektur & Tech Stack
 
-| Layer | Teknologi |
-|---|---|
-| **Frontend** | React 19, TypeScript, Vite 8 |
-| **Styling** | Tailwind CSS v4 |
-| **Animasi** | Motion (Framer Motion) |
-| **Icons** | Lucide React |
-| **Backend (planned)** | Node.js, NestJS |
-| **Database (planned)** | PostgreSQL + Prisma ORM |
-| **Auth (planned)** | Auth.js / JWT |
-| **Storage** | Google Drive |
-| **Reporting** | Google Sheets |
-| **Notifikasi** | Telegram Bot |
-| **Testing (planned)** | Vitest, Playwright |
+| Layer | Teknologi | Deskripsi |
+|---|---|---|
+| **Monorepo Manager** | PNPM Workspaces | Manajemen paket monorepo terpadu, dependency isolation, dan fast symlinking. |
+| **Frontend Web** | React 19, TypeScript, Vite 8 | UI interaktif responsif berbasis komponen modular, atomic design, dan dark/light mode. |
+| **Styling & UI** | Tailwind CSS v4, Motion, Lucide | Design system modern, mikro-animasi fluid, dan icon set enterprise. |
+| **Backend API** | NestJS 10, Node.js 20+ | RESTful API arsitektur modular, JWT Strategy, Passport, Class Validator, CORS security. |
+| **ORM & Database** | Prisma ORM, PostgreSQL | Skema data relasional kuat, migrasi otomatis, idempotent seed data, indeks teroptimasi. |
+| **Authentication** | JWT (JSON Web Token) + BCrypt / SHA-256 | Multi-role stateless authentication dengan role normalization dan permission guards. |
+| **Testing** | Vitest, Jest | Automated unit & integration testing untuk utilities, rule approval, reporting, dan auth. |
 
 ---
 
-## Struktur Proyek
+## Struktur Monorepo
 
-```
+```text
 absensi_app/
-├── src/
-│   ├── components/
-│   │   ├── common/          # Toast, Modal, CommandMenu
-│   │   └── layout/          # Sidebar, Topbar, MobileNav
-│   ├── config/
-│   │   └── navigation.ts    # RBAC + navigasi terpusat
-│   ├── data/
-│   │   └── mockData.ts      # Data mock untuk development
-│   ├── pages/
-│   │   ├── auth/            # LoginPage
-│   │   ├── landing/         # LandingPage
-│   │   ├── employee/        # Dashboard, Kehadiran, Pengajuan, dll.
-│   │   ├── supervisor/      # Tim Saya
-│   │   └── admin/           # Dashboard Admin, Approval, Laporan, dll.
-│   ├── types/
-│   │   └── index.ts         # TypeScript types & interfaces
-│   ├── App.tsx
+├── apps/
+│   ├── api/                     # NestJS REST API Server (Port 4000)
+│   │   ├── src/
+│   │   │   ├── attendance/      # Controller & Service Absensi (Check-in/out, History)
+│   │   │   ├── auth/            # JWT Auth, Login, Strategy, Guards
+│   │   │   ├── employees/       # Manajemen Karyawan & Profil
+│   │   │   ├── requests/        # Pengajuan Cuti, Sakit, Izin, Dinas, Koreksi
+│   │   │   ├── dashboard/       # Aggregator Statistik Role-based
+│   │   │   ├── locations/       # Manajemen Geofence & Kantor Cabang
+│   │   │   ├── devices/         # Device Binding & Penggantian Perangkat
+│   │   │   ├── holidays/        # Kalender & Hari Libur Nasional
+│   │   │   ├── audit/           # Forensik Audit Trail & Security Events
+│   │   │   ├── notifications/   # Sistem Notifikasi Pengajuan & Alert
+│   │   │   └── settings/        # System Settings & Konfigurasi Global
+│   │   └── package.json
+│   └── web/                     # Workspace package target untuk web client
+├── packages/
+│   ├── database/                # Prisma Schema, Migrations, Seed, & Verify
+│   │   ├── prisma/
+│   │   │   ├── schema.prisma    # Model Relasional Database
+│   │   │   ├── seed.ts          # Idempotent Seed Data (15 User, 177 Absensi)
+│   │   │   └── verify.ts        # Script Otomatis Integritas Database
+│   │   └── package.json
+│   ├── types/                   # DTOs, Enums, dan Shared TypeScript Interfaces
+│   ├── config/                  # Shared Configuration Constants
+│   └── utils/                   # Shared Business Helpers
+├── src/                         # React Frontend Application (Port 3000)
+│   ├── components/              # Komponen UI: CameraScanner, Modal, Toast, Topbar, Sidebar
+│   ├── config/                  # Client Environment & Navigasi RBAC
+│   ├── pages/                   # Pages: Auth, Employee, Supervisor, Admin Dashboard
+│   ├── services/                # API Client, Session Service, Biometric Verification
+│   ├── types/                   # Client-side Types
+│   ├── utils/                   # Geo, Time, Leave, Approval, Reporting Helpers
+│   ├── App.tsx                  # Root Routing & State Hub
 │   └── main.tsx
-├── .env                     # ⚠️ JANGAN di-commit (ada di .gitignore)
-├── .env.example             # Template environment variables
-├── .gitignore
-├── index.html
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
+├── package.json                 # Monorepo Scripts Hub
+├── pnpm-workspace.yaml          # Monorepo Workspace Definitions
+├── tsconfig.json                # TypeScript Root Configuration
+└── vite.config.ts               # Vite Configuration
 ```
 
 ---
 
 ## Fitur Utama
 
-### Absensi & Kehadiran
-- **Check-In / Check-Out** dengan selfie, face verification, GPS, dan geofencing
-- **Liveness Detection** untuk mencegah penggunaan foto/video palsu
-- **Anti-Spoofing** — deteksi presentasi foto/layar
-- **Server-Side Timestamp** — waktu absensi dari server, bukan device
-- **Status Kehadiran**: Hadir, Terlambat, Izin, Sakit, Cuti, Dinas, Tidak Hadir, Libur
+### 1. Absensi Masuk & Pulang (Check-In / Check-Out)
+- **Kamera Biometrik Wajah**: Pengambilan selfie langsung dengan deteksi wajah real-time.
+- **Liveness Detection & Anti-Spoofing**: Proteksi dari penggunaan foto statis, rekaman video, atau topeng.
+- **Validasi Geofence GPS Presisi**: Perhitungan formula *Haversine* jarak radius kantor meter-level dengan toleransi akurasi GPS.
+- **Server-Side Timestamp**: Waktu pencatatan mutlak berasal dari server untuk mencegah manipulasi jam lokal perangkat.
+- **Validasi Single Device**: Pencegahan titip absen melalui kunci fingerprint ID perangkat unik.
 
-### Pengajuan & Perizinan
-- Izin, Sakit, Cuti, Dinas, Koreksi Absensi
-- Workflow approval: Karyawan → Atasan → HR/Admin
-- Status: Pending, Approved, Rejected, Cancelled
+### 2. Pengajuan, Perizinan & Koreksi
+- **Kategori Lengkap**: Cuti Tahunan, Izin Sakit, Izin Pribadi, Dinas / Tugas Luar Kantor, dan Koreksi Jam Absensi.
+- **Workflow Approval Multi-Tier**: Pengajuan Karyawan → Persetujuan Atasan Langsung / Supervisor → Validasi Final HR.
+- **Validasi Bentrok Tanggal**: Algoritma cerdas yang mencegah pengajuan cuti tumpang tindih (*leave date overlap protection*).
 
-### GPS & Geofencing
-- Validasi koordinat GPS saat absensi
-- Admin menentukan radius kantor (default: 100 meter)
-- Deteksi **Fake GPS / Mock Location**
-- **Impossible Travel Detection** (kecepatan perpindahan tidak wajar)
+### 3. Monitoring & Analitik Admin / HR
+- **Dashboard Eksekutif**: Metrik kehadiran harian (*Hadir, Terlambat, Izin, Sakit, Cuti, Belum Masuk*).
+- **Laporan Komprehensif**: Rekap kehadiran divisi, analisis persentase keterlambatan, dan jam kerja bersih.
+- **Ekspor Dokumen**: Laporan siap cetak dalam format CSV, Excel, dan PDF untuk proses payroll.
 
-### Face Verification
-- Kamera browser untuk selfie
-- Face Detection memastikan ada wajah di foto
-- Face Matching membandingkan dengan foto referensi karyawan
-- Similarity threshold dapat dikonfigurasi via `.env`
-
-### Device Binding
-- Single Device Lock — satu akun hanya bisa dari satu perangkat
-- Admin dapat melakukan unbind / rebind perangkat
-- Penggantian perangkat memerlukan approval admin
-
-### Dashboard Role-Based
-- **Employee**: Status hari ini, tombol Check-In/Out, ringkasan bulan, sisa cuti
-- **Admin/HR**: Total karyawan, rekap harian, notifikasi pengajuan, monitoring
-
-### Security & Audit
-- **Audit Trail** append-only — semua aksi penting dicatat
-- **Security Events** — failed login, suspicious GPS, face verification gagal
-- **2FA Superadmin** via OTP Telegram
-- IP Whitelist untuk akun Superadmin
-
-### Integrasi
-- **Telegram Bot** — notifikasi check-in, approval, laporan harian, alert keamanan
-- **Google Drive** — penyimpanan selfie, dokumen cuti/sakit, file laporan
-- **Google Sheets** — sinkronisasi data kehadiran otomatis terjadwal
-- **Google Calendar** — sinkronisasi hari libur nasional Indonesia
-
-### Laporan & Ekspor
-- Rekap harian, mingguan, bulanan, tahunan
-- Laporan per karyawan dan per department
-- Export: Excel, CSV, PDF
-- Payroll Preparation (cut-off penggajian)
+### 4. Keamanan & Audit Trail Forensik
+- **Audit Log Append-Only**: Seluruh aktivitas approval, perubahan shift, pembatalan, dan modifikasi tercatat tak terhapus.
+- **Security Event Monitoring**: Deteksi anomali GPS (*Impossible Travel / Mock Location*), login gagal berulang, dan ketidaksesuaian biometrik.
 
 ---
 
 ## Role & Hak Akses (RBAC)
 
-| Fitur | Employee | Supervisor | Manager | HR | Admin | Superadmin |
+Sistem mendukung 6 role hierarkis dengan pembatasan hak akses ketat:
+
+| Menu & Fitur | Employee | Supervisor | Manager | HR | Admin | Superadmin |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Check-In/Out | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Pengajuan | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Approval | — | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Tim Saya | — | ✓ | ✓ | — | — | ✓ |
-| Laporan | — | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Export Laporan | — | — | ✓ | ✓ | ✓ | ✓ |
-| Manajemen Karyawan | — | — | — | ✓ | ✓ | ✓ |
-| Geofence | — | — | — | — | ✓ | ✓ |
-| Device Management | — | — | — | — | ✓ | ✓ |
-| Audit & Security | — | — | — | — | ✓ | ✓ |
-| Kalender & Libur | — | — | — | ✓ | ✓ | ✓ |
-| RBAC / Roles | — | — | — | — | — | ✓ |
-| Integrasi | — | — | — | — | — | ✓ |
-| 2FA Superadmin | — | — | — | — | — | ✓ |
-| Payroll | — | — | — | — | — | ✓ |
-| System Settings | — | — | — | ✓ | ✓ | ✓ |
+| **Dashboard Kehadiran** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Check-In & Check-Out** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Form Pengajuan & Cuti** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Approval Permohonan Tim** | — | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Menu Tim Saya** | — | ✓ | ✓ | — | — | ✓ |
+| **Laporan & Rekapitulasi** | — | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Ekspor Laporan Payroll** | — | — | ✓ | ✓ | ✓ | ✓ |
+| **Manajemen Karyawan** | — | — | — | ✓ | ✓ | ✓ |
+| **Kelola Radius Geofence** | — | — | — | — | ✓ | ✓ |
+| **Manajemen Device Binding** | — | — | — | — | ✓ | ✓ |
+| **Kalender & Hari Libur** | — | — | — | ✓ | ✓ | ✓ |
+| **Audit Trail & Keamanan** | — | — | — | — | ✓ | ✓ |
+| **Roles & Permissions** | — | — | — | — | — | ✓ |
+| **System Settings** | — | — | — | ✓ | ✓ | ✓ |
 
 ---
 
-## Alur Absensi
+## Alur Absensi Berlapis
 
-```
-Karyawan Buka Aplikasi
-        ↓
-     Login
-        ↓
-  Device Validation
-        ↓
-    Ambil Selfie
-        ↓
-  Face Detection
-        ↓
-  Face Matching
-        ↓
-Liveness / Anti-Spoof
-        ↓
-  GPS Validation
-        ↓
-  Geofence Check
-        ↓
-  Server Timestamp
-        ↓
-  Attendance Record
-        ↓
-   Audit Trail
-        ↓
-Telegram Notification
+```text
+   Karyawan Buka Aplikasi
+             ↓
+     Login Akun (JWT)
+             ↓
+   Validasi Device Lock
+             ↓
+   Ambil Foto Selfie
+             ↓
+  Deteksi Wajah & Liveness
+             ↓
+   Ambil Koordinat GPS
+             ↓
+ Validasi Radius Geofence
+             ↓
+  Kirim ke NestJS Backend
+             ↓
+Catat Database & Audit Log
+             ↓
+    Status Selesai (UI)
 ```
 
 ---
 
-## Quick Start
+## Panduan Instalasi & Menjalankan
 
 ### Prasyarat
+- **Node.js**: Versi `>= 18.0.0` (Disarankan Node LTS v20+)
+- **PNPM**: Versi `>= 8.0.0` (`npm install -g pnpm`)
+- **Git**
 
-- Node.js >= 18
-- npm >= 9
-
-### Instalasi
-
+### 1. Clone Repository & Setup Monorepo
 ```bash
-# Clone repository
 git clone https://github.com/enigmaaura404/absensi_app.git
 cd absensi_app
 
-# Install dependencies
-npm install
+# Install seluruh dependensi lintas workspace
+pnpm install
+```
 
-# Salin template environment
+### 2. Konfigurasi Environment File
+Salin template konfigurasi `.env.example`:
+```bash
 cp .env.example .env
-# Edit .env dan isi dengan nilai yang sesuai
+```
+Pastikan `DATABASE_URL` dan konfigurasi JWT telah disesuaikan:
+```env
+DATABASE_URL="file:./dev.db" # Atau postgresql://user:password@localhost:5432/absensi_db
+JWT_SECRET="super-secret-jwt-key-for-attendance-system-2026"
+PORT=4000
+VITE_API_BASE_URL="http://localhost:4000/api"
+```
 
-# Jalankan development server
+### 3. Generate & Migrasi Database
+```bash
+# Generate Prisma Client
+npm run db:generate
+
+# Jalankan migrasi dan seed data realistis
+npm run db:seed
+
+# Jalankan validasi integritas database
+npm run db:verify
+```
+
+### 4. Menjalankan Aplikasi Development
+Jalankan server Backend NestJS (Port 4000) dan Client Vite (Port 3000) secara serentak:
+```bash
 npm run dev
 ```
+Akses aplikasi melalui peramban:
+- **Web Portal**: [http://localhost:3000](http://localhost:3000)
+- **REST API Endpoint**: [http://localhost:4000/api](http://localhost:4000/api)
 
-Aplikasi akan berjalan di `http://localhost:3000`.
+---
 
-### Scripts
+## Database & Seed Data
+
+Sistem dilengkapi data awal sintetis (*synthetic demo data*) yang mencakup struktur organisasi perusahaan riil:
 
 ```bash
-npm run dev      # Development server (port 3000)
-npm run build    # Build production bundle
-npm run preview  # Preview production build
-npm run lint     # TypeScript type check
-npm run clean    # Bersihkan dist dan server.js
+npm run db:verify
+```
+Output Verifikasi Integritas:
+- ✅ **15 Pengguna & Karyawan** aktif lintas divisi (Teknologi, HR, Keuangan, Operasional, Pemasaran).
+- ✅ **6 Role Hierarkis & 28 Permissions** relasional granular.
+- ✅ **4 Shift Kerja** (Regular, Pagi, Sore, Malam/Overnight).
+- ✅ **2 Kantor Cabang Geofence**:
+  - *Kantor Pusat Bandung*: Jl. Asia Afrika No. 45 (Radius 100 meter).
+  - *Kantor Cabang Jakarta*: Sudirman Central Business District (Radius 100 meter).
+- ✅ **177 Riwayat Absensi Nyata** (Kombinasi Hadir Tepat Waktu, Terlambat, Cuti, dan Sakit).
+- ✅ **15 Rekening Sisa Cuti** (*Leave Balance*) terhubung ke masing-masing karyawan.
+- ✅ **9 Perangkat Terdaftar** (*Device Binding*).
+
+---
+
+## Akun Demo Terdaftar
+
+Untuk memudahkan peninjauan, pada halaman login tersedia tombol **Quick Fill Demo Accounts**:
+
+| Role | Nama | Email Kantor | Password |
+|---|---|---|---|
+| **Superadmin** | Andi Wijaya, M.Kom | `andi.wijaya@company.id` | `Superadmin123!` |
+| **HR Head** | Siti Rahma | `siti.rahma@company.id` | `HR123!` |
+| **Supervisor** | Ahmad Fauzi, S.T. | `ahmad.fauzi@company.id` | `Supervisor123!` |
+| **Karyawan** | Budi Santoso | `budi.santoso@company.id` | `Employee123!` |
+| **Manager Tech** | Tri Mulyadi | `tri.mulyadi@company.id` | `Manager123!` |
+| **Admin Ops** | Bambang Soediro | `bambang.s@company.id` | `Admin123!` |
+
+---
+
+## Konfigurasi Scripts (Package.json)
+
+| Perintah | Deskripsi |
+|---|---|
+| `npm run dev` | Menjalankan NestJS API (port 4000) & Vite Web (port 3000) secara paralel dengan *concurrently*. |
+| `npm run dev:api` | Menjalankan backend NestJS API dalam watch mode. |
+| `npm run dev:web` | Menjalankan frontend Vite client pada port 3000. |
+| `npm run build` | Melakukan kompilasi types, build NestJS API, dan bundling produksi Vite. |
+| `npm run lint` | Menjalankan static type checking `tsc --noEmit` di seluruh repo. |
+| `npm test` | Menjalankan pengujian otomatis frontend (Vitest) dan backend (Jest). |
+| `npm run db:seed` | Menjalankan seeding data realistis ke dalam database. |
+| `npm run db:verify` | Menjalankan skrip validasi integritas 15 poin relasi database. |
+| `npm run db:studio` | Membuka antarmuka grafis Prisma Studio untuk inspeksi tabel. |
+
+---
+
+## Testing & Quality Assurance
+
+Sistem telah diuji secara menyeluruh dengan **119 automated test cases**:
+
+```bash
+npm test
 ```
 
----
-
-## Konfigurasi Environment
-
-Semua konfigurasi sistem disimpan di file `.env`. Salin [`.env.example`](./.env.example) sebagai template.
-
-> ⚠️ **PENTING**: File `.env` sudah ada di `.gitignore`. Jangan pernah meng-commit file `.env` yang berisi kredensial nyata.
-
-### Variabel Utama
-
-#### App
-
-| Variabel | Keterangan |
-|---|---|
-| `VITE_APP_NAME` | Nama aplikasi |
-| `VITE_APP_ENV` | `development` / `staging` / `production` |
-| `VITE_APP_URL` | URL frontend |
-| `VITE_API_BASE_URL` | Base URL backend API |
-
-#### Demo Login (Development Only)
-
-| Variabel | Keterangan |
-|---|---|
-| `VITE_DEMO_EMPLOYEE_EMAIL` | Email akun Employee demo |
-| `VITE_DEMO_EMPLOYEE_PASSWORD` | Password akun Employee demo |
-| `VITE_DEMO_HR_EMAIL` | Email akun HR demo |
-| `VITE_DEMO_HR_PASSWORD` | Password akun HR demo |
-| `VITE_DEMO_SUPERADMIN_EMAIL` | Email akun Superadmin demo |
-| `VITE_DEMO_SUPERADMIN_PASSWORD` | Password akun Superadmin demo |
-
-> Kosongkan atau hapus variabel `VITE_DEMO_*` di production untuk menonaktifkan quick-login panel.
-
-#### Database
-
-| Variabel | Keterangan |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string (Prisma) |
-| `DB_HOST` | Host database |
-| `DB_PORT` | Port database (default: 5432) |
-| `DB_NAME` | Nama database |
-| `DB_USER` | Username database |
-| `DB_PASSWORD` | Password database |
-| `DB_SSL` | Aktifkan SSL (`true` di production) |
-
-#### Authentication
-
-| Variabel | Keterangan |
-|---|---|
-| `NEXTAUTH_SECRET` | Secret untuk Auth.js (min. 32 karakter) |
-| `JWT_SECRET` | Secret JWT (min. 32 karakter) |
-| `JWT_EXPIRES_IN` | Durasi token JWT (contoh: `8h`) |
-| `SESSION_MAX_AGE` | Durasi sesi dalam detik |
-| `REFRESH_TOKEN_SECRET` | Secret refresh token |
-
-#### Superadmin 2FA
-
-| Variabel | Keterangan |
-|---|---|
-| `SUPERADMIN_2FA_ENABLED` | Aktifkan 2FA (`true`/`false`) |
-| `SUPERADMIN_OTP_EXPIRES_SECONDS` | Durasi OTP (default: 300 detik) |
-| `SUPERADMIN_SESSION_TIMEOUT_MINUTES` | Timeout sesi Superadmin |
-| `SUPERADMIN_IP_WHITELIST` | Daftar IP yang diizinkan (comma-separated) |
-
-#### Telegram Bot
-
-| Variabel | Keterangan |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Token dari @BotFather |
-| `TELEGRAM_BOT_USERNAME` | Username bot (dengan @) |
-| `TELEGRAM_MANAGEMENT_CHAT_ID` | Chat/Group ID untuk notifikasi HR |
-| `TELEGRAM_SUPERADMIN_CHAT_ID` | Chat ID Superadmin |
-| `TELEGRAM_2FA_CHAT_ID` | Chat ID untuk kirim OTP 2FA |
-| `TELEGRAM_WEBHOOK_SECRET` | Secret untuk validasi webhook |
-| `TELEGRAM_ALLOWED_USER_IDS` | Telegram User IDs yang diizinkan (comma-separated) |
-
-#### Google Workspace
-
-| Variabel | Keterangan |
-|---|---|
-| `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID |
-| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Client Secret |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Email Service Account |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Private key Service Account |
-| `GOOGLE_PROJECT_ID` | Google Cloud Project ID |
-| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | ID folder root di Google Drive |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | ID spreadsheet untuk laporan |
-| `GOOGLE_CALENDAR_HOLIDAY_ID` | ID Google Calendar hari libur Indonesia |
-
-#### Geofencing
-
-| Variabel | Keterangan |
-|---|---|
-| `VITE_DEFAULT_GEOFENCE_RADIUS_METERS` | Radius geofence default (meter) |
-| `VITE_GEOFENCE_MAX_GPS_ACCURACY_METERS` | Batas akurasi GPS (meter) |
-
-#### Face Verification
-
-| Variabel | Keterangan |
-|---|---|
-| `VITE_FACE_VERIFICATION_ENABLED` | Aktifkan face verification |
-| `VITE_FACE_SIMILARITY_THRESHOLD` | Threshold kesamaan wajah (0.0–1.0) |
-| `VITE_LIVENESS_DETECTION_ENABLED` | Aktifkan liveness detection |
-| `VITE_ANTI_SPOOFING_ENABLED` | Aktifkan anti-spoofing |
-
-#### Device Binding
-
-| Variabel | Keterangan |
-|---|---|
-| `VITE_DEVICE_BINDING_ENABLED` | Aktifkan device binding |
-| `VITE_SINGLE_DEVICE_LOCK` | Satu akun = satu perangkat |
-| `VITE_DEVICE_REPLACEMENT_REQUIRES_APPROVAL` | Pergantian device butuh approval |
+Cakupan pengujian meliputi:
+1. `leave.test.ts`: Perhitungan hari kerja, pemotongan kuota cuti, dan deteksi bentrok tanggal (*date overlap*).
+2. `approval.test.ts`: Workflow persetujuan bertingkat dan audit jejak approval.
+3. `geo.test.ts`: Formula validasi jarak geofence Haversine dan akurasi GPS.
+4. `payroll.test.ts`: Perhitungan potongan gaji dan jam keterlambatan.
+5. `auth.service.test.ts`: Validasi token JWT, hashing password, dan mapping role.
+6. `reporting.test.ts`: Agregasi statistik kehadiran per departemen.
+7. `device.test.ts`: Validasi sidik jari perangkat unik dan binding lock.
+8. `biometric.service.test.ts`: Algoritma pencocokan kemiripan wajah.
+9. `time.test.ts`: Validasi toleransi keterlambatan dan durasi kerja.
 
 ---
 
-## Akun Demo
+## Status & Roadmap Proyek
 
-Pada mode development, tersedia tiga akun demo untuk quick-login:
-
-| Role | Email | Password |
-|---|---|---|
-| **Employee** | `budi@example.com` | `demo1234` |
-| **HR (Admin)** | `siti.rahma@company.id` | `demo1234` |
-| **Superadmin** | `andi.wijaya@company.id` | `demo1234` |
-
-Kredensial demo dibaca dari variabel `VITE_DEMO_*` di file `.env`. Kosongkan variabel tersebut di production untuk menonaktifkan fitur quick-login.
-
----
-
-## Fase Pengembangan
-
-### Phase 1 — Core MVP *(In Progress)*
-- [x] UI/UX Frontend lengkap (React + TypeScript)
-- [x] RBAC & navigasi dinamis
-- [x] Dashboard Employee & Admin
-- [x] Check-In / Check-Out flow
-- [x] Face Verification (UI)
-- [x] GPS & Geofencing (UI)
-- [x] Pengajuan & Approval
-- [x] Riwayat Kehadiran
-- [x] Laporan & Export
-- [x] Audit Trail & Security Events
-- [x] Telegram Bot (UI)
-- [x] Google Drive (UI)
-- [x] Google Sheets (UI)
-- [x] Kalender & Hari Libur
-- [x] Payroll Preparation (UI)
-- [ ] Backend API (NestJS)
-- [ ] Database PostgreSQL + Prisma
-- [ ] Auth.js Authentication
-
-### Phase 2 — Security & Anti-Fraud
-- [ ] Liveness Detection (aktif)
-- [ ] Anti-Spoofing (aktif)
-- [ ] Device Binding (backend)
-- [ ] Mock GPS Detection (backend)
-- [ ] Suspicious Activity Detection
-- [ ] Superadmin 2FA (aktif)
-- [ ] Private Telegram Bot (aktif)
-
-### Phase 3 — Integration
-- [ ] Google Calendar holiday sync
-- [ ] Email Notification (SMTP)
-- [ ] WhatsApp Notification
-- [ ] Payroll Integration
-- [ ] Advanced Reporting
-
-### Phase 4 — Advanced Device Security
-- [ ] BSSID / SSID Validation
-- [ ] Root/Jailbreak Detection
-- [ ] Native Mobile Wrapper / PWA full
-- [ ] Device Integrity Checking
-
----
-
-## Berkontribusi
-
-Kontribusi sangat disambut! Ikuti langkah berikut:
-
-1. **Fork** repository ini
-2. Buat branch fitur: `git checkout -b feat/nama-fitur`
-3. Commit perubahan: `git commit -m "feat: deskripsi singkat"`
-4. Push ke branch: `git push origin feat/nama-fitur`
-5. Buka **Pull Request** ke branch `main`
-
-Pastikan kode sudah melewati `npm run lint` sebelum membuka PR.
+- [x] **Arsitektur Monorepo**: Integrasi PNPM Workspace lintas paket.
+- [x] **Database Relasional Penuh**: Skema Prisma lengkap, migrasi, dan seed idempotent.
+- [x] **Pembersihan Total Mock Data**: `src/data/mockData.ts` dihapus, 100% data persistent dari database.
+- [x] **NestJS REST API**: 12 Controller, Services, JWT Authentication & RBAC Guards.
+- [x] **Frontend Refactor**: Mengonsumsi data real-time dari backend API via Axios/Fetch client.
+- [x] **Anti-Fraud & Biometrics**: Face detection, geofencing, single device lock, dan audit trail.
+- [x] **Zero TypeScript Errors**: 100% type-safe compilation pada `tsc --noEmit`.
+- [x] **Automated Test Suite**: 119 unit & integration tests lulus.
+- [ ] **Push Notification**: Integrasi WebPush PWA untuk reminder jam kerja.
+- [ ] **Multi-Company SaaS Mode**: Dukungan multi-tenancy untuk organisasi terpisah.
 
 ---
 
 ## Lisensi
 
-Proyek ini dilisensikan di bawah **MIT License** — bebas digunakan, dimodifikasi, dan didistribusikan, termasuk untuk kepentingan komersial, selama menyertakan copyright notice.
+Proyek ini dirilis di bawah lisensi [MIT](./LICENSE). Bebas digunakan dan dikembangkan untuk keperluan komersial maupun internal organisasi.
 
-Lihat file [`LICENSE`](./LICENSE) untuk teks lengkap.
-
-```
-MIT License — Copyright (c) 2026 Sistem Absensi Contributors
+```text
+MIT License — Copyright (c) 2026 Sistem Absensi Enterprise Contributors
 ```

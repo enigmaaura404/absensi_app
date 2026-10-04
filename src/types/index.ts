@@ -23,6 +23,7 @@ export interface User {
 }
 
 export type AttendanceStatus = 'Hadir' | 'Terlambat' | 'Izin' | 'Sakit' | 'Cuti' | 'Dinas' | 'Belum Check-In';
+export type AttendanceSessionState = 'NOT_STARTED' | 'OPEN' | 'COMPLETED' | 'FORGOT_CHECKOUT';
 
 export interface AttendanceRecord {
   id: string;
@@ -33,7 +34,11 @@ export interface AttendanceRecord {
   checkInTime: string | null;
   checkOutTime: string | null;
   status: AttendanceStatus;
+  sessionStatus?: AttendanceSessionState;
   duration: string | null;
+  durationMinutes?: number | null;
+  shiftId?: string;
+  lateMinutes?: number;
   location: string;
   coordinates?: string;
   selfieUrl?: string;
@@ -42,8 +47,42 @@ export interface AttendanceRecord {
   notes?: string;
 }
 
+export interface Shift {
+  id: string;
+  name: string;
+  code: string;
+  startTime: string;
+  endTime: string;
+  gracePeriodMinutes: number;
+  breakStartTime?: string;
+  breakEndTime?: string;
+  isOvernight?: boolean;
+}
+
+export interface WorkSchedule {
+  id: string;
+  employeeId?: string;
+  department?: string;
+  dayOfWeek: number; // 1 = Senin ... 7 = Minggu
+  shiftId: string;
+  effectiveFrom: string;
+  effectiveUntil?: string;
+}
+
 export type RequestType = 'Cuti' | 'Sakit' | 'Izin' | 'Dinas' | 'Koreksi';
 export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+
+export interface ApprovalHistoryItem {
+  id: string;
+  requestId: string;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  action: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  step: string;
+  note?: string;
+  timestamp: string;
+}
 
 export interface RequestItem {
   id: string;
@@ -66,6 +105,14 @@ export interface RequestItem {
   approverName?: string;
   attachmentName?: string;
   rejectionReason?: string;
+  // Attendance Correction specific fields (Core Feature 17)
+  targetAttendanceId?: string;
+  originalCheckIn?: string;
+  originalCheckOut?: string;
+  requestedCheckIn?: string;
+  requestedCheckOut?: string;
+  // Approval Audit History (Core Feature 18)
+  history?: ApprovalHistoryItem[];
 }
 
 export interface GeofenceLocation {
@@ -105,7 +152,7 @@ export interface AuditLogItem {
   id: string;
   timestamp: string;
   user: string;
-  action: 'CHECK_IN' | 'CHECK_OUT' | 'LEAVE_APPLY' | 'APPROVAL_GRANTED' | 'APPROVAL_REJECTED' | 'DEVICE_BIND' | 'FACE_UPDATE' | 'SETTINGS_CHANGED' | 'LOGIN';
+  action: 'CHECK_IN' | 'CHECK_OUT' | 'LEAVE_APPLY' | 'APPROVAL_GRANTED' | 'APPROVAL_REJECTED' | 'DEVICE_BIND' | 'FACE_UPDATE' | 'SETTINGS_CHANGED' | 'LOGIN' | 'SECURITY_ALERT';
   module: 'Attendance' | 'Approval' | 'Employees' | 'Security' | 'System' | 'Auth';
   ip: string;
   device: string;

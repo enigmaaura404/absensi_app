@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+*.db
+*.db-journal
+dev.db
+*.tsbuildinfo
+
+

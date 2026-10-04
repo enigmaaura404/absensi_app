@@ -1,0 +1,559 @@
+// =============================================================================
+// ATTENDANCE MANAGEMENT SYSTEM — Prisma Schema
+// Database: SQLite (development) / PostgreSQL (production)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS (using String for SQLite compatibility)
+// =============================================================================
+
+// User & Auth
+// =============================================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE | SUSPENDED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee     Employee?
+  sessions     Session[]
+  auditLogs    AuditLog[]   @relation("AuditActor")
+  notifications Notification[] @relation("NotificationRecipient")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// =============================================================================
+// ORGANIZATION
+// =============================================================================
+
+model Department {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employees   Employee[]
+}
+
+model Position {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  level       Int        @default(1) // 1=Staff, 2=Senior, 3=Lead/Supervisor, 4=Manager, 5=Director
+  description String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  employees   Employee[]
+}
+
+// =============================================================================
+// EMPLOYEE
+// =============================================================================
+
+model Employee {
+  id             String    @id @default(cuid())
+  employeeNumber String    @unique
+  userId         String    @unique
+  name           String
+  phone          String?
+  departmentId   String
+  positionId     String
+  supervisorId   String?   // Self-referential FK
+  joinedAt       DateTime
+  status         String    @default("ACTIVE") // ACTIVE | ON_LEAVE | INACTIVE | TERMINATED
+  avatarUrl      String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id])
+  department       Department        @relation(fields: [departmentId], references: [id])
+  position         Position          @relation(fields: [positionId], references: [id])
+  supervisor       Employee?         @relation("EmployeeSupervisor", fields: [supervisorId], references: [id])
+  subordinates     Employee[]        @relation("EmployeeSupervisor")
+  userRoles        UserRole[]
+  scheduleAssignments ScheduleAssignment[]
+  devices          Device[]          @relation("DeviceOwner")
+  faceProfiles     FaceProfile[]
+  attendances      Attendance[]
+  requests         Request[]
+  leaveBalances    LeaveBalance[]
+  devices_admin    Device[]          @relation("DeviceAdmin")
+
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([status])
+}
+
+// =============================================================================
+// RBAC - Role & Permission
+// =============================================================================
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  description String?
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "attendance.create"
+  name        String
+  module      String   // e.g. "attendance"
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model UserRole {
+  id         String   @id @default(cuid())
+  employeeId String
+  roleId     String
+  assignedAt DateTime @default(now())
+  assignedBy String?
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, roleId])
+  @@index([employeeId])
+}
+
+// =============================================================================
+// SCHEDULE & SHIFT
+// =============================================================================
+
+model Shift {
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  code               String   @unique
+  startTime          String   // "HH:mm" e.g. "08:00"
+  endTime            String   // "HH:mm" e.g. "17:00"
+  gracePeriodMinutes Int      @default(10)
+  breakStartTime     String?
+  breakEndTime       String?
+  isOvernight        Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  scheduleDays ScheduleDay[]
+  attendances  Attendance[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  days                 ScheduleDay[]
+  scheduleAssignments  ScheduleAssignment[]
+  attendances          Attendance[]
+}
+
+model ScheduleDay {
+  id         String @id @default(cuid())
+  scheduleId String
+  dayOfWeek  Int    // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  shiftId    String
+
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  shift      Shift    @relation(fields: [shiftId], references: [id])
+
+  @@unique([scheduleId, dayOfWeek])
+}
+
+model ScheduleAssignment {
+  id             String    @id @default(cuid())
+  employeeId     String
+  scheduleId     String
+  effectiveFrom  DateTime
+  effectiveUntil DateTime?
+  createdAt      DateTime  @default(now())
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  schedule  Schedule @relation(fields: [scheduleId], references: [id])
+
+  @@index([employeeId])
+}
+
+// =============================================================================
+// WORK CALENDAR & HOLIDAYS
+// =============================================================================
+
+model Holiday {
+  id          String   @id @default(cuid())
+  name        String
+  date        String   // "YYYY-MM-DD"
+  type        String   // NATIONAL | COMPANY | CUSTOM
+  source      String   @default("MANUAL") // MANUAL | GOOGLE_CALENDAR | IMPORT
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, type])
+  @@index([date])
+}
+
+// =============================================================================
+// OFFICE LOCATION / GEOFENCE
+// =============================================================================
+
+model OfficeLocation {
+  id                  String   @id @default(cuid())
+  name                String
+  address             String?
+  city                String?
+  latitude            Float
+  longitude           Float
+  radiusMeters        Int      @default(100)
+  accuracyLimitMeters Int      @default(50)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  attendances Attendance[]
+}
+
+// =============================================================================
+// DEVICE
+// =============================================================================
+
+model Device {
+  id               String   @id @default(cuid())
+  employeeId       String
+  deviceIdentifier String   @unique // fingerprint / stable ID
+  deviceModel      String?
+  deviceType       String?  // MOBILE | DESKTOP | TABLET
+  platform         String?  // Android | iOS | Windows | macOS | Linux
+  browser          String?
+  status           String   @default("PENDING") // PENDING | ACTIVE | BLOCKED | REVOKED
+  registeredAt     DateTime @default(now())
+  lastSeenAt       DateTime?
+  approvedAt       DateTime?
+  approvedBy       String?
+  revokedAt        DateTime?
+  revokedReason    String?
+  updatedAt        DateTime @updatedAt
+
+  employee           Employee    @relation("DeviceOwner", fields: [employeeId], references: [id])
+  approvedByEmployee Employee?   @relation("DeviceAdmin", fields: [approvedBy], references: [id])
+  attendances        Attendance[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+// =============================================================================
+// FACE PROFILE
+// =============================================================================
+
+model FaceProfile {
+  id           String   @id @default(cuid())
+  employeeId   String
+  provider     String   @default("MOCK") // MOCK | FACEIO | AWS_REKOGNITION | AZURE
+  referenceId  String?  // External provider reference
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE | PENDING
+  registeredAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  faceVerifications FaceVerification[]
+
+  @@index([employeeId])
+}
+
+// =============================================================================
+// ATTENDANCE (Core Entity)
+// =============================================================================
+
+model Attendance {
+  id               String    @id @default(cuid())
+  employeeId       String
+  workDate         String    // "YYYY-MM-DD"
+  scheduleId       String?
+  shiftId          String?
+  officeLocationId String?
+  deviceId         String?
+
+  status           String    // PRESENT | LATE | ABSENT | LEAVE | SICK | PERMISSION | BUSINESS_TRIP | HOLIDAY
+
+  checkInAt        DateTime?
+  checkOutAt       DateTime?
+  durationMinutes  Int?
+
+  checkInLatitude  Float?
+  checkInLongitude Float?
+  checkInAccuracy  Float?    // meters
+  checkOutLatitude  Float?
+  checkOutLongitude Float?
+  checkOutAccuracy  Float?
+
+  checkInSelfieUrl  String?
+  checkOutSelfieUrl String?
+
+  checkInIp         String?
+  checkOutIp        String?
+
+  lateMinutes      Int?      @default(0)
+  notes            String?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  employee         Employee         @relation(fields: [employeeId], references: [id])
+  schedule         Schedule?        @relation(fields: [scheduleId], references: [id])
+  shift            Shift?           @relation(fields: [shiftId], references: [id])
+  officeLocation   OfficeLocation?  @relation(fields: [officeLocationId], references: [id])
+  device           Device?          @relation(fields: [deviceId], references: [id])
+  faceVerifications FaceVerification[]
+  events           AttendanceEvent[]
+
+  @@unique([employeeId, workDate])
+  @@index([employeeId])
+  @@index([workDate])
+  @@index([status])
+}
+
+model AttendanceEvent {
+  id           String   @id @default(cuid())
+  attendanceId String
+  eventType    String   // CHECK_IN_STARTED | FACE_VERIFIED | LOCATION_VERIFIED | CHECK_IN_COMPLETED | etc.
+  metadata     String?  // JSON string
+  occurredAt   DateTime @default(now())
+
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+}
+
+model FaceVerification {
+  id           String   @id @default(cuid())
+  attendanceId String
+  employeeId   String
+  faceProfileId String?
+  provider     String   @default("MOCK")
+  status       String   // PENDING | VERIFIED | FAILED
+  confidence   Float?   // 0.0 - 1.0
+  verifiedAt   DateTime @default(now())
+  metadata     String?  // JSON string
+
+  attendance   Attendance  @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  faceProfile  FaceProfile? @relation(fields: [faceProfileId], references: [id])
+
+  @@index([attendanceId])
+}
+
+// =============================================================================
+// REQUEST / LEAVE
+// =============================================================================
+
+model LeaveType {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  annualQuota    Int      @default(12) // Default days per year
+  requiresDoc    Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  leaveBalances  LeaveBalance[]
+  requests       Request[]
+}
+
+model LeaveBalance {
+  id            String   @id @default(cuid())
+  employeeId    String
+  leaveTypeId   String
+  year          Int
+  allocatedDays Int
+  usedDays      Float    @default(0)
+  pendingDays   Float    @default(0)
+  remainingDays Float
+
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId])
+}
+
+model Request {
+  id              String    @id @default(cuid())
+  employeeId      String
+  type            String    // LEAVE | SICK | PERMISSION | BUSINESS_TRIP | CORRECTION
+  leaveTypeId     String?
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  
+  startDate       String    // "YYYY-MM-DD"
+  endDate         String    // "YYYY-MM-DD"
+  startTime       String?   // "HH:mm"
+  endTime         String?   // "HH:mm"
+  days            Float?
+  
+  reason          String
+  notes           String?
+  
+  // Business trip specific
+  destination     String?
+  tripPurpose     String?
+  
+  // Correction specific
+  targetAttendanceId     String?
+  originalCheckIn        DateTime?
+  originalCheckOut       DateTime?
+  requestedCheckIn       DateTime?
+  requestedCheckOut      DateTime?
+  
+  attachmentUrl   String?
+  attachmentName  String?
+
+  submittedAt     DateTime  @default(now())
+  resolvedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+  leaveType       LeaveType?    @relation(fields: [leaveTypeId], references: [id])
+  approvalHistory ApprovalHistory[]
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate])
+  @@index([type])
+}
+
+model ApprovalHistory {
+  id         String   @id @default(cuid())
+  requestId  String
+  approverId String   // Employee ID
+  approverName String
+  approverRole String
+  action     String   // SUBMITTED | APPROVED | REJECTED | CANCELLED
+  step       String   @default("1") // Approval step number
+  note       String?
+  timestamp  DateTime @default(now())
+
+  request    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+// =============================================================================
+// NOTIFICATION
+// =============================================================================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  category    String   // ATTENDANCE | APPROVAL | SECURITY | SYSTEM
+  isRead      Boolean  @default(false)
+  metadata    String?  // JSON
+  createdAt   DateTime @default(now())
+
+  recipient   User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  // User ID (null for system events)
+  actorName  String?
+  actorRole  String?
+  action     String   // CHECK_IN | CHECK_OUT | LOGIN | LOGOUT | REQUEST_CREATED | APPROVED | etc.
+  module     String   // ATTENDANCE | APPROVAL | AUTH | SYSTEM | SECURITY | EMPLOYEES
+  targetId   String?  // ID of affected entity
+  targetType String?  // Employee | Request | Attendance | etc.
+  ipAddress  String?
+  userAgent  String?
+  result     String   // SUCCESS | FAILED
+  details    String?
+  metadata   String?  // JSON
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// SYSTEM SETTINGS
+// =============================================================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // string | number | boolean | json
+  label     String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}

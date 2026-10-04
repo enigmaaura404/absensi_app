@@ -10,43 +10,45 @@ import {
   AlertCircle,
   HelpCircle,
 } from 'lucide-react';
-import { User, RequestItem } from '../../types';
+import { User, RequestItem, HolidayItem } from '../../types';
 import { StatCard } from '../../components/common/StatCard';
 import { StatusBadge } from '../../components/common/StatusBadge';
+
+import { calculateWorkingDays } from '../../utils/leave';
+import { getTodayDateString, formatDateIndonesian } from '../../utils/time';
 
 interface CutiPageProps {
   user: User;
   requests: RequestItem[];
+  holidays?: HolidayItem[];
   onAddRequest: (item: RequestItem) => void;
 }
 
-export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, onAddRequest }) => {
+export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, holidays = [], onAddRequest }) => {
   const [showForm, setShowForm] = useState(false);
   const [jenisCuti, setJenisCuti] = useState('Cuti Tahunan');
-  const [startDate, setStartDate] = useState('2026-10-12');
-  const [endDate, setEndDate] = useState('2026-10-13');
+  const [startDate, setStartDate] = useState(getTodayDateString());
+  const [endDate, setEndDate] = useState(getTodayDateString());
   const [reason, setReason] = useState('');
   const [fileName, setFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  // Auto calculate work days between two dates
-  const calculateDays = (start: string, end: string) => {
-    try {
-      const d1 = new Date(start);
-      const d2 = new Date(end);
-      const diffTime = d2.getTime() - d1.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      return diffDays > 0 ? diffDays : 1;
-    } catch {
-      return 1;
-    }
-  };
-
-  const autoDays = calculateDays(startDate, endDate);
+  // Auto calculate working days skipping weekends and registered holidays (BR-LEAVE-005)
+  const holidayDates = holidays.map((h) => h.date);
+  const dayStats = calculateWorkingDays(startDate, endDate, holidayDates);
+  const workingDaysCount = dayStats.workingDays > 0 ? dayStats.workingDays : 1;
   const cutiList = requests.filter((r) => r.type === 'Cuti');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
+    if (jenisCuti === 'Cuti Tahunan' && user.leaveBalance.remaining < workingDaysCount) {
+      setFormError(`Sisa cuti tidak mencukupi! Anda memiliki ${user.leaveBalance.remaining} hari, namun pengajuan ini memerlukan ${workingDaysCount} hari kerja.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     setTimeout(() => {
@@ -59,10 +61,10 @@ export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, onAddRequest
         subType: jenisCuti,
         startDate,
         endDate,
-        days: autoDays,
+        days: workingDaysCount,
         reason,
         status: 'Pending',
-        submittedAt: '02 Oct 2026 ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        submittedAt: `${formatDateIndonesian()} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
         attachmentName: fileName || undefined,
       };
 
@@ -71,6 +73,7 @@ export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, onAddRequest
       setShowForm(false);
       setReason('');
       setFileName('');
+      setFormError(null);
     }, 400);
   };
 
@@ -135,6 +138,12 @@ export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, onAddRequest
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
@@ -158,8 +167,15 @@ export const CutiPage: React.FC<CutiPageProps> = ({ user, requests, onAddRequest
                   Jumlah Hari Otomatis
                 </label>
                 <div className="px-3 py-2.5 rounded-xl bg-neutral-100 border border-neutral-200 text-xs font-bold text-neutral-900 font-mono">
-                  {autoDays} Hari Kerja
+                  {workingDaysCount} Hari Kerja
                 </div>
+                {(dayStats.weekendDays > 0 || dayStats.holidayDays > 0) && (
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    {dayStats.totalCalendarDays} hari kalender
+                    {dayStats.weekendDays > 0 && ` • ${dayStats.weekendDays} akhir pekan`}
+                    {dayStats.holidayDays > 0 && ` • ${dayStats.holidayDays} libur nasional`}
+                  </p>
+                )}
               </div>
 
               <div>

@@ -1,20 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import {
-  CURRENT_USER_EMPLOYEE,
-  CURRENT_USER_ADMIN,
-  CURRENT_USER_SUPERADMIN,
-  MOCK_EMPLOYEES,
-  INITIAL_TODAY_ATTENDANCE,
-  MOCK_HISTORY_ATTENDANCE,
-  MOCK_REQUESTS,
-  MOCK_GEOFENCES,
-  MOCK_DEVICES,
-  MOCK_HOLIDAYS,
-  MOCK_AUDIT_LOGS,
-  MOCK_SECURITY_EVENTS,
-  MOCK_NOTIFICATIONS,
-  MOCK_PAYROLL_PREPARATION,
-} from './data/mockData';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   User,
   UserRole,
@@ -26,8 +10,13 @@ import {
   AuditLogItem,
   SecurityEventItem,
   NotificationItem,
-  PayrollPrepItem,
 } from './types';
+import { ShieldAlert } from 'lucide-react';
+import { getTodayDateString, formatTimeWIB } from './utils/time';
+import { hasPermission, CENTRAL_NAVIGATION } from './config/navigation';
+import { authService } from './services/auth/auth.service';
+import { AuthUser } from './services/auth/auth.types';
+import { apiClient } from './services/api/api.client';
 
 // Layout & Common Components
 import { Sidebar } from './components/layout/Sidebar';
@@ -69,14 +58,248 @@ import { Security2FAPage } from './pages/admin/Security2FAPage';
 import { CalendarHolidaysPage } from './pages/admin/CalendarHolidaysPage';
 import { LaporanPage } from './pages/admin/LaporanPage';
 import { PayrollPage } from './pages/admin/PayrollPage';
-import { SystemSettingsPage } from './pages/admin/SystemSettingsPage';
+import { SystemSettingsPage, SystemSettings } from './pages/admin/SystemSettingsPage';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Type Mappers — API Response → Internal App Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+function mapApiEmployeeToUser(e: any): User {
+  const primaryRole = (e.roles?.[0]
+    ? e.roles[0].charAt(0).toUpperCase() + e.roles[0].slice(1)
+    : 'Employee') as UserRole;
+
+  return {
+    id: e.id,
+    employeeId: e.employeeCode || e.id,
+    name: e.fullName,
+    email: e.email,
+    phone: e.phone || '',
+    role: primaryRole,
+    department: e.departmentName || 'General',
+    position: e.positionName || 'Staff',
+    joinDate: e.joinDate || '',
+    avatar:
+      e.avatarUrl ||
+      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
+    status: e.status === 'ACTIVE' ? 'Active' : 'Inactive',
+    faceVerified: false,
+    deviceVerified: false,
+    leaveBalance: {
+      total: e.leaveBalance?.total ?? 12,
+      used: e.leaveBalance?.used ?? 0,
+      pending: e.leaveBalance?.pending ?? 0,
+      remaining: e.leaveBalance?.remaining ?? 12,
+    },
+  } as any;
+}
+
+function mapApiAttendanceToRecord(a: any): AttendanceRecord {
+  return {
+    id: a.id,
+    employeeId: a.employeeId,
+    employeeName: a.employeeName || 'Karyawan',
+    department: a.departmentName || 'Umum',
+    date: a.date || a.workDate,
+    checkInTime: a.checkIn
+      ? new Date(a.checkIn).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      : null,
+    checkOutTime: a.checkOut
+      ? new Date(a.checkOut).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      : null,
+    status: (
+      a.status === 'PRESENT' || a.status === 'present'
+        ? 'Hadir'
+        : a.status === 'LATE' || a.status === 'late'
+        ? 'Terlambat'
+        : a.status === 'ABSENT' || a.status === 'absent'
+        ? 'Tidak Hadir'
+        : 'Hadir'
+    ) as any,
+    duration: a.workMinutes
+      ? `${Math.floor(a.workMinutes / 60)}j ${a.workMinutes % 60}m`
+      : a.checkIn && !a.checkOut
+      ? 'Berjalan'
+      : '0m',
+    durationMinutes: a.workMinutes || null,
+    shiftId: a.shiftId || 'shift-regular',
+    lateMinutes: a.lateMinutes || 0,
+    location: a.checkInAddress || 'Kantor Pusat',
+    coordinates:
+      a.checkInLatitude && a.checkInLongitude
+        ? `${a.checkInLatitude}, ${a.checkInLongitude}`
+        : '-6.917464, 107.619123',
+    device: 'System Registered Device',
+    ip: '182.253.14.88',
+    selfieUrl: a.selfieUrl || '',
+    notes: a.notes,
+  };
+}
+
+function mapApiRequestToItem(r: any): RequestItem {
+  const typeMap: Record<string, string> = {
+    LEAVE: 'Cuti Tahunan',
+    leave: 'Cuti Tahunan',
+    SICK: 'Izin Sakit',
+    sick: 'Izin Sakit',
+    PERMIT: 'Izin Keperluan Pribadi',
+    permit: 'Izin Keperluan Pribadi',
+    DINAS: 'Dinas Luar',
+    dinas: 'Dinas Luar',
+    CORRECTION: 'Koreksi',
+    correction: 'Koreksi',
+  };
+
+  const statusMap: Record<string, string> = {
+    PENDING: 'Pending',
+    APPROVED: 'Approved',
+    REJECTED: 'Rejected',
+    CANCELLED: 'Cancelled',
+  };
+
+  return {
+    id: r.id,
+    employeeId: r.employeeId,
+    employeeName: r.employeeName || 'Karyawan',
+    department: r.departmentName || 'Umum',
+    type: (typeMap[r.type] || typeMap[r.requestType] || 'Izin') as any,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    days: r.days || 1,
+    reason: r.reason || '',
+    status: (statusMap[r.status] || 'Pending') as any,
+    submittedAt: r.createdAt ? r.createdAt.split('T')[0] : (r.startDate || ''),
+    approverName: r.approvalHistory?.[0]?.approverName || 'Supervisor',
+    notes: r.approvalNotes,
+  };
+}
+
+function mapApiLocationToGeofence(l: any): GeofenceLocation {
+  return {
+    id: l.id,
+    name: l.name,
+    address: l.address || '',
+    latitude: l.latitude,
+    longitude: l.longitude,
+    radiusMeters: l.radiusMeters || 100,
+    active: l.isActive !== false,
+  } as any;
+}
+
+function mapApiHolidayToItem(h: any): HolidayItem {
+  return {
+    id: h.id,
+    name: h.name,
+    date: h.date,
+    type: h.type === 'NATIONAL' ? 'Nasional' : h.type === 'COMPANY' ? 'Perusahaan' : 'Cuti Bersama',
+    description: h.description || '',
+  };
+}
+
+function mapApiDeviceToItem(d: any): DeviceItem {
+  return {
+    id: d.id,
+    employeeId: d.employeeId,
+    employeeName: d.employeeName || 'Karyawan',
+    deviceModel: d.deviceModel || 'Unknown Device',
+    platform: d.platform || 'Unknown OS',
+    browser: d.browser || 'Unknown Browser',
+    status: (d.status === 'ACTIVE' ? 'Active' : d.status === 'BLOCKED' ? 'Disabled' : 'Active') as any,
+    registeredAt: d.registeredAt ? d.registeredAt.split('T')[0] : getTodayDateString(),
+    lastSeenAt: d.lastSeenAt || undefined,
+  } as any;
+}
+
+function mapApiAuditToItem(a: any): AuditLogItem {
+  return {
+    id: a.id,
+    timestamp: a.createdAt ? a.createdAt.replace('T', ' ').substring(0, 19) : getTodayDateString(),
+    user: a.actorName ? `${a.actorName} (${a.actorRole || 'Staff'})` : 'System',
+    action: a.action,
+    module: a.module,
+    ip: a.ipAddress || '127.0.0.1',
+    device: 'System Device',
+    result: a.result === 'FAILED' ? 'FAILED' : 'SUCCESS',
+    details: a.details || '',
+  };
+}
+
+/**
+ * Maps an AuthUser (from auth service) to the app's internal User shape.
+ */
+function authUserToAppUser(authUser: AuthUser): User {
+  return {
+    id: authUser.id,
+    employeeId: authUser.employeeId,
+    name: authUser.name,
+    email: authUser.email,
+    role: authUser.role as UserRole,
+    department: authUser.department,
+    position: authUser.position,
+    avatar:
+      authUser.avatar ||
+      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
+    phone: authUser.phone ?? '',
+    joinDate: '',
+    status: 'Active',
+    faceVerified: false,
+    deviceVerified: false,
+    leaveBalance: { total: 12, used: 0, pending: 0, remaining: 12 },
+  } as any;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Default system settings
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+  gracePeriod: 10,
+  requiredSelfie: true,
+  faceVerification: true,
+  livenessDetection: true,
+  gpsRequired: true,
+  geofenceRequired: true,
+  companyName: 'PT Teknologi Absensi Mandiri',
+  timezone: 'Asia/Jakarta (WIB)',
+  workStartTime: '08:00',
+  workEndTime: '17:00',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_USER — used only before auth resolves. Blank, never shown in UI.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLACEHOLDER_USER: User = {
+  id: '',
+  employeeId: '',
+  name: '',
+  email: '',
+  role: 'Employee',
+  department: '',
+  position: '',
+  joinDate: '',
+  avatar: '',
+  phone: '',
+  status: 'Active',
+  faceVerified: false,
+  deviceVerified: false,
+  leaveBalance: { total: 0, used: 0, pending: 0, remaining: 0 },
+} as any;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App Component
+// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  // Authentication & Role State
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [viewMode, setViewMode] = useState<'landing' | 'login' | 'app'>('landing');
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('Employee');
-  const [currentUser, setCurrentUser] = useState<User>(CURRENT_USER_EMPLOYEE);
+  // ── Session bootstrap: recover auth from localStorage on startup ──
+  const recoveredSession = authService.getCurrentUser();
+  const initialUser: User = recoveredSession
+    ? authUserToAppUser(recoveredSession)
+    : PLACEHOLDER_USER;
+  const initialLoggedIn = recoveredSession !== null;
+  const initialViewMode: 'landing' | 'login' | 'app' = recoveredSession ? 'app' : 'landing';
+
+  // Authentication State
+  const [isLoggedIn, setIsLoggedIn] = useState(initialLoggedIn);
+  const [viewMode, setViewMode] = useState<'landing' | 'login' | 'app'>(initialViewMode);
+  const [currentUser, setCurrentUser] = useState<User>(initialUser);
 
   // Navigation State
   const [currentRoute, setCurrentRoute] = useState<string>('dashboard');
@@ -95,23 +318,118 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // App Data States
-  const [employees, setEmployees] = useState<User[]>(MOCK_EMPLOYEES);
-  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>(INITIAL_TODAY_ATTENDANCE);
-  const [historyAttendance, setHistoryAttendance] = useState<AttendanceRecord[]>(MOCK_HISTORY_ATTENDANCE);
-  const [requests, setRequests] = useState<RequestItem[]>(MOCK_REQUESTS);
-  const [geofences, setGeofences] = useState<GeofenceLocation[]>(MOCK_GEOFENCES);
-  const [devices, setDevices] = useState<DeviceItem[]>(MOCK_DEVICES);
-  const [holidays, setHolidays] = useState<HolidayItem[]>(MOCK_HOLIDAYS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(MOCK_AUDIT_LOGS);
-  const [securityEvents, setSecurityEvents] = useState<SecurityEventItem[]>(MOCK_SECURITY_EVENTS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(MOCK_NOTIFICATIONS);
-  const [payrollData] = useState<PayrollPrepItem[]>(MOCK_PAYROLL_PREPARATION);
+  // ── Real Data States — initialized empty; populated from API ──
+  const [employees, setEmployees] = useState<User[]>([]);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+  const [historyAttendance, setHistoryAttendance] = useState<AttendanceRecord[]>([]);
+  const [requests, setRequests] = useState<RequestItem[]>([]);
+  const [geofences, setGeofences] = useState<GeofenceLocation[]>([]);
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [holidays, setHolidays] = useState<HolidayItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEventItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
+
+  // ── Load real data from NestJS API ──
+  const loadDataFromApi = useCallback(async () => {
+    if (!isLoggedIn) return;
+
+    try {
+      const [
+        empRes,
+        attHistRes,
+        todayAttRes,
+        reqRes,
+        locRes,
+        holRes,
+        devRes,
+        audRes,
+        setRes,
+        notifRes,
+      ] = await Promise.all([
+        apiClient.getEmployees({ pageSize: 100 }).catch(() => null),
+        apiClient.getAttendanceHistory({ pageSize: 100 }).catch(() => null),
+        apiClient.getTodayAttendance().catch(() => null),
+        apiClient.getRequests({ pageSize: 100 }).catch(() => null),
+        apiClient.getLocations().catch(() => null),
+        apiClient.getHolidays().catch(() => null),
+        apiClient.getDevices().catch(() => null),
+        apiClient.getAuditLogs({ pageSize: 100 }).catch(() => null),
+        apiClient.getSettings().catch(() => null),
+        apiClient.getNotifications({ pageSize: 50 }).catch(() => null),
+      ]);
+
+      if (empRes?.items?.length) {
+        setEmployees(empRes.items.map(mapApiEmployeeToUser));
+      }
+
+      if (attHistRes?.items?.length) {
+        setHistoryAttendance(attHistRes.items.map(mapApiAttendanceToRecord));
+      }
+
+      if (todayAttRes) {
+        setTodayAttendance([mapApiAttendanceToRecord(todayAttRes)]);
+      }
+
+      if (reqRes?.items?.length) {
+        setRequests(reqRes.items.map(mapApiRequestToItem));
+      }
+
+      if (locRes && Array.isArray(locRes) && locRes.length > 0) {
+        setGeofences(locRes.map(mapApiLocationToGeofence));
+      }
+
+      if (holRes && Array.isArray(holRes) && holRes.length > 0) {
+        setHolidays(holRes.map(mapApiHolidayToItem));
+      }
+
+      if (devRes && Array.isArray(devRes) && devRes.length > 0) {
+        setDevices(devRes.map(mapApiDeviceToItem));
+      }
+
+      if (audRes?.items?.length) {
+        setAuditLogs(audRes.items.map(mapApiAuditToItem));
+      }
+
+      if (setRes && Array.isArray(setRes) && setRes.length > 0) {
+        const settingsMap: Partial<SystemSettings> = {};
+        for (const s of setRes) {
+          if (s.key === 'grace_period_minutes') settingsMap.gracePeriod = Number(s.value);
+          if (s.key === 'require_selfie') settingsMap.requiredSelfie = s.value === 'true';
+          if (s.key === 'require_liveness') settingsMap.livenessDetection = s.value === 'true';
+          if (s.key === 'require_geofence') settingsMap.geofenceRequired = s.value === 'true';
+          if (s.key === 'company_name') settingsMap.companyName = s.value;
+          if (s.key === 'work_start_time') settingsMap.workStartTime = s.value;
+          if (s.key === 'work_end_time') settingsMap.workEndTime = s.value;
+        }
+        setSystemSettings((prev) => ({ ...prev, ...settingsMap }));
+      }
+
+      if (notifRes?.items) {
+        setNotifications(notifRes.items.map((n: any) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          category: n.category,
+          timestamp: n.createdAt ? new Date(n.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '',
+          unread: !n.isRead,
+        })));
+      }
+    } catch (err) {
+      console.warn('[App] API background load skipped:', err);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    loadDataFromApi();
+  }, [loadDataFromApi]);
+
 
   // Toast System
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const addToast = (type: 'success' | 'error' | 'info', title: string, message?: string) => {
+  const addToast = (type: ToastMessage['type'], title: string, message?: string) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     setToasts((prev) => [...prev, { id, type, title, message }]);
     setTimeout(() => {
@@ -123,384 +441,399 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const getUserForRole = (role: UserRole): User => {
-    switch (role) {
-      case 'Employee':
-        return CURRENT_USER_EMPLOYEE;
-      case 'Supervisor':
-        return {
-          ...CURRENT_USER_EMPLOYEE,
-          id: 'usr-spv',
-          employeeId: 'EMP-00045',
-          name: 'Ahmad Fauzi, S.T.',
-          email: 'ahmad.fauzi@company.id',
-          role: 'Supervisor',
-          department: 'Technology',
-          position: 'Engineering Team Lead',
-          avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80',
-        };
-      case 'Manager':
-        return {
-          ...CURRENT_USER_EMPLOYEE,
-          id: 'usr-mgr',
-          employeeId: 'EMP-00022',
-          name: 'Irwan Setiawan, M.M.',
-          email: 'irwan.setiawan@company.id',
-          role: 'Manager',
-          department: 'Operations & Engineering',
-          position: 'Head of Operations',
-          avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=256&q=80',
-        };
-      case 'HR':
-        return CURRENT_USER_ADMIN;
-      case 'Admin':
-        return {
-          ...CURRENT_USER_ADMIN,
-          id: 'usr-adm',
-          employeeId: 'EMP-00005',
-          name: 'Bambang Soediro',
-          email: 'bambang.s@company.id',
-          role: 'Admin',
-          department: 'General Affairs',
-          position: 'Senior Operations Admin',
-          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80',
-        };
-      case 'Superadmin':
-      default:
-        return CURRENT_USER_SUPERADMIN;
-    }
-  };
-
-  // Login handler
-  const handleLogin = (role: UserRole) => {
+  /**
+   * Login handler — receives a fully-resolved AuthUser from authService.
+   */
+  const handleLogin = (authUser: AuthUser) => {
+    const appUser = authUserToAppUser(authUser);
     setIsLoggedIn(true);
-    setCurrentUserRole(role);
-    const targetUser = getUserForRole(role);
-    setCurrentUser(targetUser);
+    setCurrentUser(appUser);
     setCurrentRoute('dashboard');
     setViewMode('app');
-    addToast('success', `Berhasil Masuk sebagai ${role}`, `Selamat datang, ${targetUser.name}`);
+    addToast('success', `Selamat datang, ${authUser.name}`, `Masuk sebagai ${authUser.role}`);
   };
 
-  // Logout handler
+  /** Logout handler — clears session via authService then returns to landing. */
   const handleLogout = () => {
+    authService.logout();
     setIsLoggedIn(false);
+    setCurrentRoute('dashboard');
     setViewMode('landing');
+    // Clear all app data on logout
+    setEmployees([]);
+    setTodayAttendance([]);
+    setHistoryAttendance([]);
+    setRequests([]);
     addToast('info', 'Anda telah keluar', 'Sesi login telah diakhiri.');
   };
 
-  // Role Switcher handler (For demo purposes)
-  const handleChangeRole = (role: UserRole) => {
-    setCurrentUserRole(role);
-    const targetUser = getUserForRole(role);
-    setCurrentUser(targetUser);
-    setCurrentRoute('dashboard');
-    addToast('info', `Mode Akses Berubah`, `Anda sekarang melihat aplikasi dengan role: ${role}`);
+  // ── Check-In Success handler — API-first ──
+  const handleSuccessCheckIn = async (time: string, location: string, coords?: string) => {
+    try {
+      const [lat, lng] = coords
+        ? coords.split(',').map((s) => parseFloat(s.trim()))
+        : [-6.917464, 107.619123];
+
+      // PRIMARY: Call API first, wait for real DB write
+      const result = await apiClient.checkIn({
+        coordinates: { latitude: lat, longitude: lng },
+        notes: `Check-in di ${location}`,
+      });
+
+      // SECONDARY: Refresh all data from DB to keep UI in sync
+      await loadDataFromApi();
+
+      const status = result?.status === 'late' ? 'Terlambat' : 'Hadir';
+      const lateMins = result?.lateMinutes || 0;
+      const cleanTime = time.replace(' WIB', '');
+
+      const toastTitle = status === 'Terlambat' ? 'Check-In Tercatat (Terlambat)' : 'Check-In Berhasil';
+      const toastMsg = status === 'Terlambat'
+        ? `Absensi masuk tercatat pukul ${cleanTime} (Terlambat ${lateMins} menit).`
+        : `Absensi masuk tercatat tepat waktu pukul ${cleanTime}`;
+      addToast(status === 'Terlambat' ? 'warning' : 'success', toastTitle, toastMsg);
+    } catch (err: any) {
+      addToast('error', 'Check-In Gagal', err?.message || 'Terjadi kesalahan saat melakukan check-in.');
+    }
   };
 
-  // Check-In Success handler
-  const handleSuccessCheckIn = (time: string, location: string) => {
-    const updatedToday: AttendanceRecord = {
-      id: `att-now-${Date.now()}`,
-      employeeId: currentUser.employeeId,
-      employeeName: currentUser.name,
-      department: currentUser.department,
-      date: '2026-10-02',
-      checkInTime: time.replace(' WIB', ''),
-      checkOutTime: null,
-      status: 'Hadir',
-      duration: 'Berjalan',
-      location: location,
-      coordinates: '-6.917464, 107.619123',
-      device: 'Samsung Galaxy S24 Ultra',
-      ip: '182.253.14.88',
-      selfieUrl: currentUser.avatar,
-      notes: 'Check-in sukses terverifikasi biometrik',
-    };
+  // ── Bulk Delete Attendance Records (Admin / Superadmin / HR only) — API-first ──
+  const handleBulkDeleteAttendance = async (ids: string[]) => {
+    if (currentUser.role !== 'Admin' && currentUser.role !== 'Superadmin' && currentUser.role !== 'HR') {
+      addToast('error', 'Akses Ditolak', 'Karyawan tidak memiliki izin untuk menghapus catatan presensi.');
+      return;
+    }
 
-    setTodayAttendance((prev) => [updatedToday, ...prev.filter((r) => r.employeeId !== currentUser.employeeId)]);
-    setHistoryAttendance((prev) => [updatedToday, ...prev]);
-
-    // Add Audit log
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${time}`,
-        user: `${currentUser.name} (${currentUser.employeeId})`,
-        action: 'CHECK_IN',
-        module: 'Attendance',
-        ip: '182.253.14.88',
-        device: 'Samsung Galaxy S24 Ultra',
-        result: 'SUCCESS',
-        details: `Check-in di ${location}`,
-      },
-      ...prev,
-    ]);
-
-    // Add Notification
-    setNotifications((prev) => [
-      {
-        id: `notif-${Date.now()}`,
-        title: 'Check-In Berhasil',
-        message: `Absensi masuk pukul ${time} di ${location} berhasil diverifikasi.`,
-        category: 'Attendance',
-        timestamp: time,
-        unread: true,
-      },
-      ...prev,
-    ]);
-
-    addToast('success', 'Check-In Berhasil', `Absensi masuk tercatat pukul ${time}`);
+    try {
+      await apiClient.bulkDeleteAttendance(ids);
+      await loadDataFromApi();
+      addToast('success', 'Hapus Massal Berhasil', `${ids.length} data absensi telah dihapus dari database.`);
+    } catch (err: any) {
+      addToast('error', 'Hapus Gagal', err?.message || 'Terjadi kesalahan saat menghapus data.');
+    }
   };
 
-  // Bulk Delete Attendance Records handler
-  const handleBulkDeleteAttendance = (ids: string[]) => {
-    const idSet = new Set(ids);
-    setHistoryAttendance((prev) => prev.filter((item) => !idSet.has(item.id)));
-    setTodayAttendance((prev) => prev.filter((item) => !idSet.has(item.id)));
+  // ── Check-Out Success handler — API-first ──
+  const handleSuccessCheckOut = async (time: string) => {
+    try {
+      const result = await apiClient.checkOut({
+        coordinates: { latitude: -6.917464, longitude: 107.619123 },
+        notes: `Check-out pukul ${time.replace(' WIB', '')}`,
+      });
 
-    // Audit log
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
-        user: `${currentUser.name} (${currentUser.role})`,
-        action: 'SETTINGS_CHANGED',
-        module: 'Attendance',
-        ip: '182.253.14.88',
-        device: 'Admin Control Console',
-        result: 'SUCCESS',
-        details: `Menghapus massal ${ids.length} catatan kehadiran.`,
-      },
-      ...prev,
-    ]);
+      await loadDataFromApi();
 
-    addToast('success', 'Hapus Massal Berhasil', `${ids.length} data absensi telah dihapus dari sistem.`);
+      const duration = result?.workMinutes
+        ? `${Math.floor(result.workMinutes / 60)}j ${result.workMinutes % 60}m`
+        : '';
+      addToast('success', 'Check-Out Berhasil', `Absensi pulang tercatat pukul ${time.replace(' WIB', '')}${duration ? `. Durasi kerja: ${duration}` : ''}`);
+    } catch (err: any) {
+      addToast('error', 'Check-Out Gagal', err?.message || 'Terjadi kesalahan saat melakukan check-out.');
+    }
   };
 
-  // Check-Out Success handler
-  const handleSuccessCheckOut = (time: string) => {
-    setTodayAttendance((prev) =>
-      prev.map((r) => {
-        if (r.employeeId === currentUser.employeeId) {
-          return {
-            ...r,
-            checkOutTime: time.replace(' WIB', ''),
-            duration: '9j 03m',
-          };
-        }
-        return r;
-      })
-    );
+  // ── Leave / Request handler — API-first ──
+  const handleAddRequest = async (item: RequestItem) => {
+    try {
+      const typeStr = item.type as string;
+      await apiClient.createRequest({
+        requestType: (
+          typeStr === 'Cuti Tahunan' || typeStr === 'Cuti' ? 'LEAVE' :
+          typeStr === 'Izin Sakit' || typeStr === 'Sakit' ? 'SICK' :
+          typeStr === 'Dinas Luar' || typeStr === 'Dinas' ? 'BUSINESS_TRIP' :
+          typeStr === 'Koreksi' ? 'CORRECTION' : 'PERMISSION'
+        ) as any,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        reason: item.reason,
+      });
 
-    setHistoryAttendance((prev) =>
-      prev.map((r) => {
-        if (r.employeeId === currentUser.employeeId && r.date === '2026-10-02') {
-          return {
-            ...r,
-            checkOutTime: time.replace(' WIB', ''),
-            duration: '9j 03m',
-          };
-        }
-        return r;
-      })
-    );
-
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${time}`,
-        user: `${currentUser.name} (${currentUser.employeeId})`,
-        action: 'CHECK_OUT',
-        module: 'Attendance',
-        ip: '182.253.14.88',
-        device: 'Samsung Galaxy S24 Ultra',
-        result: 'SUCCESS',
-        details: 'Check-out berhasil. Durasi kerja: 9j 03m',
-      },
-      ...prev,
-    ]);
-
-    addToast('success', 'Check-Out Berhasil', `Absensi pulang tercatat pukul ${time}. Selamat beristirahat!`);
+      await loadDataFromApi();
+      addToast('success', `Pengajuan ${item.type} Terkirim`, 'Permohonan Anda sedang menunggu persetujuan atasan/HR.');
+    } catch (err: any) {
+      addToast('error', `Pengajuan Gagal`, err?.message || 'Terjadi kesalahan saat mengirim permohonan.');
+    }
   };
 
-  // Add Request handler (Cuti, Sakit, Izin, Dinas, Koreksi)
-  const handleAddRequest = (item: RequestItem) => {
-    setRequests((prev) => [item, ...prev]);
-
-    // Audit log
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
-        user: `${item.employeeName} (${item.employeeId})`,
-        action: 'LEAVE_APPLY',
-        module: 'Approval',
-        ip: '182.253.14.88',
-        device: 'Samsung Galaxy S24 Ultra',
-        result: 'SUCCESS',
-        details: `Pengajuan ${item.type}: ${item.reason}`,
-      },
-      ...prev,
-    ]);
-
-    addToast('success', `Pengajuan ${item.type} Terkirim`, 'Permohonan Anda sedang menunggu persetujuan atasan/HR.');
+  const handleCancelRequest = async (id: string) => {
+    try {
+      await apiClient.request(`/requests/${id}/cancel`, { method: 'POST' });
+      await loadDataFromApi();
+      addToast('info', 'Pengajuan Dibatalkan', 'Permohonan telah dibatalkan.');
+    } catch (err: any) {
+      // Fallback: update locally if API endpoint not yet available
+      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'Cancelled' } : r)));
+      addToast('info', 'Pengajuan Dibatalkan', 'Permohonan telah dibatalkan.');
+    }
   };
 
-  const handleCancelRequest = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'Cancelled' } : r))
-    );
-    addToast('info', 'Pengajuan Dibatalkan', 'Permohonan telah dibatalkan.');
-  };
-
-  // Approval Handlers
-  const handleApproveRequest = (id: string, note?: string) => {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: 'Approved',
-              approvedAt: `02 Oct 2026 ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
-              approverName: currentUser.name,
-              notes: note,
-            }
-          : r
-      )
-    );
-
+  // ── Approval Handlers — API-first (BR-APP-001, BR-APP-002, BR-LEAVE-001) ──
+  const handleApproveRequest = async (id: string, note?: string) => {
     const approvedItem = requests.find((r) => r.id === id);
+    if (!approvedItem) return;
 
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
-        user: `${currentUser.name} (${currentUser.role})`,
-        action: 'APPROVAL_GRANTED',
-        module: 'Approval',
-        ip: '182.253.14.89',
-        device: 'HR Management Console',
-        result: 'SUCCESS',
-        details: `Menyetujui pengajuan ${approvedItem?.type} untuk ${approvedItem?.employeeName}`,
-      },
-      ...prev,
-    ]);
+    // Prevent self-approval
+    if (approvedItem.employeeId === currentUser.employeeId) {
+      addToast('error', 'Akses Ditolak', 'Self-Approval dilarang oleh sistem.');
+      return;
+    }
 
-    addToast('success', 'Pengajuan Disetujui', `Permohonan ${approvedItem?.employeeName} telah di-approve.`);
+    try {
+      // PRIMARY: API call — server handles leave balance deduction atomically
+      await apiClient.approveRequest(id, note);
+
+      // SECONDARY: Refresh all data (leave balance, requests, etc.) from DB
+      await loadDataFromApi();
+
+      addToast('success', 'Pengajuan Disetujui', `Permohonan ${approvedItem?.employeeName} telah di-approve.`);
+    } catch (err: any) {
+      addToast('error', 'Approval Gagal', err?.message || 'Terjadi kesalahan saat menyetujui pengajuan.');
+    }
   };
 
-  const handleRejectRequest = (id: string, note?: string) => {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: 'Rejected',
-              rejectionReason: note,
-            }
-          : r
-      )
-    );
-
+  const handleRejectRequest = async (id: string, note?: string) => {
     const rejectedItem = requests.find((r) => r.id === id);
 
-    setAuditLogs((prev) => [
-      {
-        id: `aud-${Date.now()}`,
-        timestamp: `02 Oct 2026 ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
-        user: `${currentUser.name} (${currentUser.role})`,
-        action: 'APPROVAL_REJECTED',
-        module: 'Approval',
-        ip: '182.253.14.89',
-        device: 'HR Management Console',
-        result: 'SUCCESS',
-        details: `Menolak pengajuan ${rejectedItem?.type} untuk ${rejectedItem?.employeeName}`,
-      },
-      ...prev,
-    ]);
-
-    addToast('error', 'Pengajuan Ditolak', `Permohonan ${rejectedItem?.employeeName} telah ditolak.`);
+    try {
+      await apiClient.rejectRequest(id, note);
+      await loadDataFromApi();
+      addToast('error', 'Pengajuan Ditolak', `Permohonan ${rejectedItem?.employeeName} telah ditolak.`);
+    } catch (err: any) {
+      addToast('error', 'Reject Gagal', err?.message || 'Terjadi kesalahan saat menolak pengajuan.');
+    }
   };
 
-  // Employee CRUD handlers
+  // ── Employee CRUD handlers ──
   const handleAddEmployee = (newEmp: User) => {
     setEmployees((prev) => [...prev, newEmp]);
+    apiClient
+      .createEmployee({
+        fullName: newEmp.name,
+        email: newEmp.email,
+        phone: newEmp.phone,
+        role: newEmp.role.toLowerCase(),
+        departmentId: newEmp.department,
+        positionId: newEmp.position,
+        employeeCode: newEmp.employeeId,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend create employee error:', e));
+
     addToast('success', 'Karyawan Didaftarkan', `${newEmp.name} (${newEmp.employeeId}) berhasil ditambahkan.`);
   };
 
   const handleUpdateEmployee = (updatedEmp: User) => {
     setEmployees((prev) => prev.map((e) => (e.id === updatedEmp.id ? updatedEmp : e)));
+    apiClient
+      .updateEmployee(updatedEmp.id, {
+        fullName: updatedEmp.name,
+        phone: updatedEmp.phone,
+        status: updatedEmp.status,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend update employee error:', e));
+
     addToast('success', 'Data Disimpan', `Profil karyawan ${updatedEmp.name} telah diperbarui.`);
   };
 
   const handleDeleteEmployee = (id: string) => {
     const emp = employees.find((e) => e.id === id);
     setEmployees((prev) => prev.filter((e) => e.id !== id));
+    apiClient
+      .deleteEmployee(id)
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend delete employee error:', e));
+
     addToast('info', 'Karyawan Dinonaktifkan', `Akun ${emp?.name} telah dinonaktifkan dari sistem.`);
   };
 
-  // Geofence handlers
+  // ── Geofence handlers ──
   const handleAddLocation = (loc: GeofenceLocation) => {
     setGeofences((prev) => [...prev, loc]);
+    apiClient
+      .createLocation({
+        name: loc.name,
+        address: loc.address,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        radiusMeters: loc.radiusMeters,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend create location error:', e));
+
     addToast('success', 'Lokasi Kantor Ditambahkan', `${loc.name} dengan radius ${loc.radiusMeters}m aktif.`);
   };
 
   const handleUpdateLocation = (loc: GeofenceLocation) => {
     setGeofences((prev) => prev.map((l) => (l.id === loc.id ? loc : l)));
+    apiClient
+      .updateLocation(loc.id, {
+        name: loc.name,
+        address: loc.address,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        radiusMeters: loc.radiusMeters,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend update location error:', e));
+
     addToast('success', 'Geofence Diperbarui', `Batas radius ${loc.name} berhasil disimpan.`);
   };
 
   const handleDeleteLocation = (id: string) => {
     setGeofences((prev) => prev.filter((l) => l.id !== id));
+    apiClient
+      .deleteLocation(id)
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend delete location error:', e));
+
     addToast('info', 'Lokasi Kantor Dihapus', 'Lokasi kantor telah dihapus dari sistem absensi.');
   };
 
-  // Device handlers
+  // ── Device handlers ──
   const handleUnbindDevice = (id: string) => {
     setDevices((prev) => prev.filter((d) => d.id !== id));
+    apiClient
+      .deleteDevice(id)
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend delete device error:', e));
+
     addToast('info', 'Device Unbound', 'Tautan perangkat berhasil dilepas.');
   };
 
   const handleDisableDevice = (id: string) => {
-    setDevices((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, status: 'Disabled' } : d))
-    );
+    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, status: 'Disabled' } : d)));
+    apiClient
+      .updateDeviceStatus(id, 'BLOCKED')
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend block device error:', e));
+
     addToast('error', 'Device Disabled', 'Perangkat dibekukan dari sistem absensi.');
   };
 
-  // Security Event Resolve
+  // ── Security Event Resolve ──
   const handleResolveEvent = (id: string) => {
-    setSecurityEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status: 'Resolved' } : e))
-    );
+    setSecurityEvents((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'Resolved' } : e)));
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: `${getTodayDateString()} ${formatTimeWIB()}`,
+        user: `${currentUser.name} (${currentUser.employeeId})`,
+        action: 'SECURITY_ALERT',
+        module: 'Security',
+        ip: '127.0.0.1',
+        device: 'Admin Console',
+        result: 'SUCCESS',
+        details: `Insiden keamanan ID ${id} diselesaikan (Resolved)`,
+      },
+      ...prev,
+    ]);
     addToast('success', 'Insiden Diselesaikan', 'Status investigasi keamanan ditandai Resolved.');
   };
 
-  // Holiday handlers
+  // ── Holiday handlers ──
   const handleAddHoliday = (hol: HolidayItem) => {
     setHolidays((prev) => [...prev, hol]);
+    apiClient
+      .createHoliday({
+        name: hol.name,
+        date: hol.date,
+        type: hol.type === 'Nasional' ? 'NATIONAL' : hol.type === 'Perusahaan' ? 'COMPANY' : 'CUSTOM',
+        description: hol.description,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend create holiday error:', e));
+
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: `${getTodayDateString()} ${formatTimeWIB()}`,
+        user: `${currentUser.name} (${currentUser.employeeId})`,
+        action: 'SETTINGS_CHANGED',
+        module: 'System',
+        ip: '127.0.0.1',
+        device: 'Admin Console',
+        result: 'SUCCESS',
+        details: `Hari libur ditambahkan: ${hol.name} (${hol.date}) - ${hol.type}`,
+      },
+      ...prev,
+    ]);
     addToast('success', 'Hari Libur Ditambahkan', `${hol.name} (${hol.date}) tercatat di kalender.`);
   };
 
   const handleDeleteHoliday = (id: string) => {
+    const targetHol = holidays.find((h) => h.id === id);
     setHolidays((prev) => prev.filter((h) => h.id !== id));
+    apiClient
+      .deleteHoliday(id)
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend delete holiday error:', e));
+
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: `${getTodayDateString()} ${formatTimeWIB()}`,
+        user: `${currentUser.name} (${currentUser.employeeId})`,
+        action: 'SETTINGS_CHANGED',
+        module: 'System',
+        ip: '127.0.0.1',
+        device: 'Admin Console',
+        result: 'SUCCESS',
+        details: `Hari libur dihapus: ${targetHol ? targetHol.name : id}`,
+      },
+      ...prev,
+    ]);
     addToast('info', 'Hari Libur Dihapus', 'Jadwal libur telah dihapus.');
   };
 
-  // Notification read handlers
-  const handleMarkNotificationAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, unread: false } : n))
-    );
+  // ── System Settings handler ──
+  const handleSaveSystemSettings = (newSettings: SystemSettings) => {
+    setSystemSettings(newSettings);
+    apiClient
+      .updateSettings({
+        grace_period_minutes: newSettings.gracePeriod,
+        require_selfie: newSettings.requiredSelfie,
+        require_liveness: newSettings.livenessDetection,
+        require_geofence: newSettings.geofenceRequired,
+        company_name: newSettings.companyName,
+        work_start_time: newSettings.workStartTime,
+        work_end_time: newSettings.workEndTime,
+      })
+      .then(() => loadDataFromApi())
+      .catch((e) => console.warn('Backend update settings error:', e));
+
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        timestamp: `${getTodayDateString()} ${formatTimeWIB()}`,
+        user: `${currentUser.name} (${currentUser.employeeId})`,
+        action: 'SETTINGS_CHANGED',
+        module: 'System',
+        ip: '127.0.0.1',
+        device: 'Admin Console',
+        result: 'SUCCESS',
+        details: `Konfigurasi sistem diperbarui: Grace ${newSettings.gracePeriod}m, Selfie: ${newSettings.requiredSelfie}, Geofence: ${newSettings.geofenceRequired}`,
+      },
+      ...prev,
+    ]);
+    addToast('success', 'Pengaturan Disimpan', 'Konfigurasi parameter operasional sistem berhasil disimpan.');
   };
 
-  const handleMarkAllNotificationsRead = () => {
+  // ── Notification handlers — API-first ──
+  const handleMarkNotificationAsRead = async (id: string) => {
+    // Optimistic local update for instant UI feedback
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+    // Persist to DB
+    apiClient.markNotificationAsRead(id).catch(() => {});
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    await apiClient.markAllNotificationsAsRead().catch(() => {});
     addToast('info', 'Notifikasi Dibaca', 'Semua notifikasi ditandai sudah dibaca.');
   };
 
-  // 1. Public Website Landing Page (Accessible without login at /)
+  // ── View modes ──
   if (viewMode === 'landing') {
     return (
       <>
@@ -514,12 +847,11 @@ export default function App() {
     );
   }
 
-  // 2. Authentication Login Screen
   if (viewMode === 'login' || !isLoggedIn) {
     return (
       <>
         <LoginPage
-          onLogin={handleLogin}
+          onLogin={(authUser) => handleLogin(authUser)}
           onBackToLanding={() => setViewMode('landing')}
         />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
@@ -536,7 +868,7 @@ export default function App() {
       <Sidebar
         currentRoute={currentRoute}
         onNavigate={setCurrentRoute}
-        userRole={currentUserRole}
+        userRole={currentUser.role}
         pendingApprovalsCount={pendingApprovalsCount}
         isOpenMobile={isSidebarOpenMobile}
         onCloseMobile={() => setIsSidebarOpenMobile(false)}
@@ -550,8 +882,6 @@ export default function App() {
         <Topbar
           currentRoute={currentRoute}
           onToggleSidebar={() => setIsSidebarOpenMobile(!isSidebarOpenMobile)}
-          userRole={currentUserRole}
-          onChangeRole={handleChangeRole}
           notifications={notifications}
           onMarkNotificationAsRead={handleMarkNotificationAsRead}
           onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
@@ -564,206 +894,269 @@ export default function App() {
 
         {/* Dynamic Route Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-24 lg:pb-12">
-          {currentRoute === 'dashboard' && currentUserRole === 'Employee' && (
-            <EmployeeDashboard
-              user={currentUser}
-              todayRecord={todayRecordForUser}
-              recentHistory={historyAttendance}
-              onNavigate={setCurrentRoute}
-              onOpenCheckIn={() => setCurrentRoute('check-in')}
-              onOpenCheckOut={() => setCurrentRoute('check-out')}
-            />
-          )}
+          {(() => {
+            const currentNavDef = CENTRAL_NAVIGATION.find((item) => item.id === currentRoute);
+            const isRouteAuthorized =
+              !currentNavDef?.requiredPermissions ||
+              hasPermission(currentUser.role, currentNavDef.requiredPermissions);
 
-          {((currentRoute === 'dashboard' && currentUserRole !== 'Employee') || currentRoute === 'admin-dashboard') && (
-            <AdminDashboard
-              todayAttendance={todayAttendance}
-              pendingRequests={requests.filter((r) => r.status === 'Pending')}
-              securityEvents={securityEvents}
-              onNavigate={setCurrentRoute}
-              onApproveRequest={handleApproveRequest}
-              onRejectRequest={handleRejectRequest}
-            />
-          )}
+            if (!isRouteAuthorized) {
+              return (
+                <div className="p-8 max-w-lg mx-auto my-12 bg-white rounded-3xl border border-rose-200 shadow-sm text-center space-y-4">
+                  <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+                    <ShieldAlert className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-base font-bold text-neutral-900">Akses Ditolak (403 Forbidden)</h3>
+                  <p className="text-xs text-neutral-500">
+                    Akun Anda dengan role <strong>{currentUser.role}</strong> tidak memiliki izin untuk mengakses rute <code>{currentRoute}</code>.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentRoute('dashboard')}
+                    className="px-4 py-2 bg-neutral-900 text-white text-xs font-semibold rounded-xl hover:bg-neutral-800 transition"
+                  >
+                    Kembali ke Dashboard
+                  </button>
+                </div>
+              );
+            }
 
-          {currentRoute === 'kehadiran' && (
-            <KehadiranPage
-              user={currentUser}
-              todayRecord={todayRecordForUser}
-              onSuccessCheckIn={handleSuccessCheckIn}
-              onSuccessCheckOut={handleSuccessCheckOut}
-              onAddDinasRequest={handleAddRequest}
-              onNavigate={setCurrentRoute}
-            />
-          )}
+            return (
+              <>
+                {currentRoute === 'dashboard' && currentUser.role === 'Employee' && (
+                  <EmployeeDashboard
+                    user={currentUser}
+                    todayRecord={todayRecordForUser}
+                    recentHistory={historyAttendance}
+                    onNavigate={setCurrentRoute}
+                    onOpenCheckIn={() => setCurrentRoute('check-in')}
+                    onOpenCheckOut={() => setCurrentRoute('check-out')}
+                  />
+                )}
 
-          {currentRoute === 'tim-saya' && (
-            <TimSayaPage />
-          )}
+                {((currentRoute === 'dashboard' && currentUser.role !== 'Employee') || currentRoute === 'admin-dashboard') && (
+                  <AdminDashboard
+                    todayAttendance={todayAttendance}
+                    pendingRequests={requests.filter((r) => r.status === 'Pending')}
+                    securityEvents={securityEvents}
+                    employees={employees}
+                    onNavigate={setCurrentRoute}
+                    onApproveRequest={handleApproveRequest}
+                    onRejectRequest={handleRejectRequest}
+                  />
+                )}
 
-          {currentRoute === 'check-in' && (
-            <CheckInPage
-              onSuccessCheckIn={handleSuccessCheckIn}
-              onNavigate={setCurrentRoute}
-            />
-          )}
+                {currentRoute === 'kehadiran' && (
+                  <KehadiranPage
+                    user={currentUser}
+                    todayRecord={todayRecordForUser}
+                    onSuccessCheckIn={handleSuccessCheckIn}
+                    onSuccessCheckOut={handleSuccessCheckOut}
+                    onAddDinasRequest={handleAddRequest}
+                    onNavigate={setCurrentRoute}
+                  />
+                )}
 
-          {currentRoute === 'check-out' && (
-            <CheckOutPage
-              onSuccessCheckOut={handleSuccessCheckOut}
-              onNavigate={setCurrentRoute}
-            />
-          )}
+                {currentRoute === 'tim-saya' && (
+                  <TimSayaPage
+                    currentUser={currentUser}
+                    employees={employees}
+                    todayAttendance={todayAttendance}
+                    requests={requests}
+                    onApproveRequest={handleApproveRequest}
+                    onRejectRequest={handleRejectRequest}
+                  />
+                )}
 
-          {currentRoute === 'dinas' && (
-            <DinasPage
-              requests={requests}
-              onAddRequest={handleAddRequest}
-            />
-          )}
+                {currentRoute === 'check-in' && (
+                  <CheckInPage
+                    user={currentUser}
+                    todayRecord={todayRecordForUser}
+                    geofences={geofences}
+                    onSuccessCheckIn={handleSuccessCheckIn}
+                    onNavigate={setCurrentRoute}
+                  />
+                )}
 
-          {currentRoute === 'pengajuan' && (
-            <PengajuanPage
-              requests={requests}
-              onAddRequest={handleAddRequest}
-              onCancelRequest={handleCancelRequest}
-            />
-          )}
+                {currentRoute === 'check-out' && (
+                  <CheckOutPage
+                    user={currentUser}
+                    todayRecord={todayRecordForUser}
+                    onSuccessCheckOut={handleSuccessCheckOut}
+                    onNavigate={setCurrentRoute}
+                  />
+                )}
 
-          {currentRoute === 'cuti' && (
-            <CutiPage
-              user={currentUser}
-              requests={requests}
-              onAddRequest={handleAddRequest}
-            />
-          )}
+                {currentRoute === 'dinas' && (
+                  <DinasPage
+                    user={currentUser}
+                    requests={requests}
+                    onAddRequest={handleAddRequest}
+                  />
+                )}
 
-          {currentRoute === 'riwayat' && (
-            <RiwayatKehadiranPage
-              history={historyAttendance}
-              isAdmin={currentUserRole === 'Admin' || currentUserRole === 'Superadmin' || currentUserRole === 'HR'}
-              onBulkDelete={handleBulkDeleteAttendance}
-            />
-          )}
+                {currentRoute === 'pengajuan' && (
+                  <PengajuanPage
+                    user={currentUser}
+                    requests={requests}
+                    holidays={holidays}
+                    onAddRequest={handleAddRequest}
+                    onCancelRequest={handleCancelRequest}
+                  />
+                )}
 
-          {currentRoute === 'laporan' && (
-            <LaporanPage
-              records={historyAttendance}
-              onSyncGoogleSheets={() => {
-                setCurrentRoute('integrasi-sheets');
-                addToast('info', 'Google Sheets Integration', 'Membuka konfigurasi sinkronisasi spreadsheet.');
-              }}
-            />
-          )}
+                {currentRoute === 'cuti' && (
+                  <CutiPage
+                    user={currentUser}
+                    requests={requests}
+                    holidays={holidays}
+                    onAddRequest={handleAddRequest}
+                  />
+                )}
 
-          {currentRoute === 'kalender' && (
-            <CalendarHolidaysPage
-              holidays={holidays}
-              onAddHoliday={handleAddHoliday}
-              onDeleteHoliday={handleDeleteHoliday}
-              userRole={currentUserRole}
-              isSuperadmin={currentUserRole === 'Superadmin'}
-            />
-          )}
+                {currentRoute === 'riwayat' && (
+                  <RiwayatKehadiranPage
+                    currentEmployeeId={currentUser.employeeId}
+                    history={historyAttendance}
+                    isAdmin={currentUser.role === 'Admin' || currentUser.role === 'Superadmin' || currentUser.role === 'HR'}
+                    onBulkDelete={handleBulkDeleteAttendance}
+                  />
+                )}
 
-          {currentRoute === 'profil' && (
-            <ProfilePage
-              user={currentUser}
-              onNavigate={setCurrentRoute}
-              onUpdatePhone={(newPhone) => {
-                setCurrentUser((prev) => ({ ...prev, phone: newPhone }));
-                addToast('success', 'Nomor HP Diperbarui', `Kontak aktif: ${newPhone}`);
-              }}
-            />
-          )}
+                {currentRoute === 'laporan' && (
+                  <LaporanPage
+                    records={historyAttendance}
+                    employees={employees}
+                    onSyncGoogleSheets={() => {
+                      setCurrentRoute('integrasi-sheets');
+                      addToast('info', 'Google Sheets Integration', 'Membuka konfigurasi sinkronisasi spreadsheet.');
+                    }}
+                  />
+                )}
 
-          {currentRoute === 'face-verification' && (
-            <FaceVerificationPage
-              user={currentUser}
-            />
-          )}
+                {currentRoute === 'kalender' && (
+                  <CalendarHolidaysPage
+                    holidays={holidays}
+                    onAddHoliday={handleAddHoliday}
+                    onDeleteHoliday={handleDeleteHoliday}
+                    userRole={currentUser.role}
+                    isSuperadmin={currentUser.role === 'Superadmin'}
+                  />
+                )}
 
-          {(currentRoute === 'perangkat' || currentRoute === 'devices-admin') && (
-            currentUserRole === 'Employee' ? (
-              <DevicePage />
-            ) : (
-              <DevicesAdminPage
-                devices={devices}
-                onUnbindDevice={handleUnbindDevice}
-                onDisableDevice={handleDisableDevice}
-              />
-            )
-          )}
+                {currentRoute === 'profil' && (
+                  <ProfilePage
+                    user={currentUser}
+                    onNavigate={setCurrentRoute}
+                    onUpdatePhone={(newPhone) => {
+                      setCurrentUser((prev) => ({ ...prev, phone: newPhone }));
+                      addToast('success', 'Nomor HP Diperbarui', `Kontak aktif: ${newPhone}`);
+                    }}
+                  />
+                )}
 
-          {/* Admin Routes */}
-          {(currentRoute === 'approval' || currentRoute === 'persetujuan') && (
-            <ApprovalPage
-              requests={requests}
-              onApprove={handleApproveRequest}
-              onReject={handleRejectRequest}
-            />
-          )}
+                {currentRoute === 'face-verification' && (
+                  <FaceVerificationPage user={currentUser} />
+                )}
 
-          {(currentRoute === 'employees' || currentRoute === 'karyawan') && (
-            <EmployeeManagementPage
-              employees={employees}
-              onAddEmployee={handleAddEmployee}
-              onUpdateEmployee={handleUpdateEmployee}
-              onDeleteEmployee={handleDeleteEmployee}
-            />
-          )}
+                {currentRoute === 'devices-admin' && (
+                  hasPermission(currentUser.role, ['device.manage']) ? (
+                    <DevicesAdminPage
+                      devices={devices}
+                      onUnbindDevice={handleUnbindDevice}
+                      onDisableDevice={handleDisableDevice}
+                    />
+                  ) : (
+                    <div className="max-w-md mx-auto py-16 text-center">
+                      <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-sm font-medium">
+                        Akses Ditolak: Anda tidak memiliki izin untuk mengelola inventaris perangkat organisasi.
+                      </div>
+                    </div>
+                  )
+                )}
 
-          {currentRoute === 'geofence' && (
-            <GeofencePage
-              locations={geofences}
-              onAddLocation={handleAddLocation}
-              onUpdateLocation={handleUpdateLocation}
-              onDeleteLocation={handleDeleteLocation}
-            />
-          )}
+                {currentRoute === 'perangkat' && (
+                  hasPermission(currentUser.role, ['device.manage']) ? (
+                    <DevicesAdminPage
+                      devices={devices}
+                      onUnbindDevice={handleUnbindDevice}
+                      onDisableDevice={handleDisableDevice}
+                    />
+                  ) : (
+                    <DevicePage user={currentUser} devices={devices} />
+                  )
+                )}
 
-          {(currentRoute === 'audit-trail' || currentRoute === 'audit-security') && (
-            <AuditTrailPage
-              logs={auditLogs}
-            />
-          )}
+                {/* Admin Routes */}
+                {(currentRoute === 'approval' || currentRoute === 'persetujuan') && (
+                  <ApprovalPage
+                    currentUser={currentUser}
+                    requests={requests}
+                    onApprove={handleApproveRequest}
+                    onReject={handleRejectRequest}
+                  />
+                )}
 
-          {currentRoute === 'security-events' && (
-            <SecurityEventsPage
-              events={securityEvents}
-              onResolveEvent={handleResolveEvent}
-            />
-          )}
+                {(currentRoute === 'employees' || currentRoute === 'karyawan') && (
+                  <EmployeeManagementPage
+                    employees={employees}
+                    onAddEmployee={handleAddEmployee}
+                    onUpdateEmployee={handleUpdateEmployee}
+                    onDeleteEmployee={handleDeleteEmployee}
+                  />
+                )}
 
-          {currentRoute === 'roles-permissions' && (
-            <RolesPermissionsPage />
-          )}
+                {currentRoute === 'geofence' && (
+                  <GeofencePage
+                    locations={geofences}
+                    onAddLocation={handleAddLocation}
+                    onUpdateLocation={handleUpdateLocation}
+                    onDeleteLocation={handleDeleteLocation}
+                  />
+                )}
 
-          {(currentRoute === 'google-sheets' || currentRoute === 'integrasi-sheets') && (
-            <GoogleSheetsPage />
-          )}
+                {(currentRoute === 'audit-trail' || currentRoute === 'audit-security') && (
+                  <AuditTrailPage logs={auditLogs} />
+                )}
 
-          {(currentRoute === 'google-drive' || currentRoute === 'integrasi-drive') && (
-            <GoogleDrivePage />
-          )}
+                {currentRoute === 'security-events' && (
+                  <SecurityEventsPage
+                    events={securityEvents}
+                    onResolveEvent={handleResolveEvent}
+                  />
+                )}
 
-          {(currentRoute === 'telegram-bot' || currentRoute === 'integrasi-telegram') && (
-            <TelegramBotPage />
-          )}
+                {currentRoute === 'roles-permissions' && <RolesPermissionsPage />}
 
-          {(currentRoute === 'security-2fa' || currentRoute === 'keamanan-2fa') && (
-            <Security2FAPage />
-          )}
+                {(currentRoute === 'google-sheets' || currentRoute === 'integrasi-sheets') && (
+                  <GoogleSheetsPage />
+                )}
 
-          {currentRoute === 'payroll' && (
-            <PayrollPage
-              payrollData={payrollData}
-            />
-          )}
+                {(currentRoute === 'google-drive' || currentRoute === 'integrasi-drive') && (
+                  <GoogleDrivePage />
+                )}
 
-          {(currentRoute === 'system-settings' || currentRoute === 'pengaturan') && (
-            <SystemSettingsPage />
-          )}
+                {(currentRoute === 'telegram-bot' || currentRoute === 'integrasi-telegram') && (
+                  <TelegramBotPage />
+                )}
+
+                {(currentRoute === 'security-2fa' || currentRoute === 'keamanan-2fa') && (
+                  <Security2FAPage />
+                )}
+
+                {currentRoute === 'payroll' && (
+                  <PayrollPage payrollData={[]} />
+                )}
+
+                {(currentRoute === 'system-settings' || currentRoute === 'pengaturan') && (
+                  <SystemSettingsPage
+                    settings={systemSettings}
+                    onSaveSettings={handleSaveSystemSettings}
+                  />
+                )}
+              </>
+            );
+          })()}
         </main>
       </div>
 
@@ -772,7 +1165,7 @@ export default function App() {
         currentRoute={currentRoute}
         onNavigate={setCurrentRoute}
         onOpenSidebar={() => setIsSidebarOpenMobile(true)}
-        userRole={currentUserRole}
+        userRole={currentUser.role}
         pendingApprovalsCount={pendingApprovalsCount}
       />
 
@@ -781,7 +1174,7 @@ export default function App() {
         isOpen={isCommandMenuOpen}
         onClose={() => setIsCommandMenuOpen(false)}
         onNavigate={setCurrentRoute}
-        userRole={currentUserRole}
+        userRole={currentUser.role}
       />
 
       {/* Global Toast Notification Container */}

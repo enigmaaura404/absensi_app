@@ -18,6 +18,7 @@ import { User, UserRole } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmationModal } from '../../components/common/ConfirmationModal';
+import { formatDateIndonesian } from '../../utils/time';
 
 interface EmployeeManagementPageProps {
   employees: User[];
@@ -109,7 +110,7 @@ export const EmployeeManagementPage: React.FC<EmployeeManagementPageProps> = ({
         role,
         department,
         position,
-        joinDate: '02 Oktober 2026',
+        joinDate: formatDateIndonesian(new Date()),
         avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
         status: 'Active',
         faceVerified: false,

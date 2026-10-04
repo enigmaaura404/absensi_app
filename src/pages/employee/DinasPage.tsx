@@ -12,19 +12,22 @@ import {
   Search,
 } from 'lucide-react';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { RequestItem } from '../../types';
+import { RequestItem, User } from '../../types';
+import { getTodayDateString, formatDateIndonesian } from '../../utils/time';
 
 interface DinasPageProps {
   onAddRequest: (item: RequestItem) => void;
   requests: RequestItem[];
+  user?: User;
 }
 
-export const DinasPage: React.FC<DinasPageProps> = ({ onAddRequest, requests }) => {
+export const DinasPage: React.FC<DinasPageProps> = ({ onAddRequest, requests, user }) => {
   const [showForm, setShowForm] = useState(false);
   const [jenis, setJenis] = useState('Dinas Luar Kantor');
-  const [tanggal, setTanggal] = useState('2026-10-06');
+  const [tanggal, setTanggal] = useState(getTodayDateString());
+  const [tanggalSelesai, setTanggalSelesai] = useState(getTodayDateString());
   const [jamMulai, setJamMulai] = useState('09:00');
-  const [jamSelesai, setJamSelesai] = useState('16:00');
+  const [jamSelesai, setJamSelesai] = useState('17:00');
   const [tujuan, setTujuan] = useState('Customer Office PT Finansial Global');
   const [lokasi, setLokasi] = useState('Sudirman Central Business District, Jakarta');
   const [keperluan, setKeperluan] = useState('Meeting integrasi payment gateway dan audit API');
@@ -42,13 +45,13 @@ export const DinasPage: React.FC<DinasPageProps> = ({ onAddRequest, requests }) 
     setTimeout(() => {
       const newDinas: RequestItem = {
         id: `dinas-${Date.now()}`,
-        employeeId: 'EMP-00124',
-        employeeName: 'Budi Santoso',
-        department: 'Technology',
+        employeeId: user?.employeeId || 'EMP-00124',
+        employeeName: user?.name || 'Budi Santoso',
+        department: user?.department || 'Technology',
         type: 'Dinas',
         subType: jenis,
         startDate: tanggal,
-        endDate: tanggal,
+        endDate: tanggalSelesai || tanggal,
         days: 1,
         timeStart: jamMulai,
         timeEnd: jamSelesai,
@@ -56,7 +59,7 @@ export const DinasPage: React.FC<DinasPageProps> = ({ onAddRequest, requests }) 
         reason: keperluan,
         notes: keterangan,
         status: 'Pending',
-        submittedAt: '02 Oct 2026 ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        submittedAt: `${formatDateIndonesian()} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
         attachmentName: fileName,
       };
 

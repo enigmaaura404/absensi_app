@@ -12,18 +12,24 @@ import {
   XCircle,
   Eye,
 } from 'lucide-react';
-import { RequestItem, RequestType } from '../../types';
+import { RequestItem, RequestType, User, HolidayItem } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { Modal } from '../../components/common/Modal';
+import { getTodayDateString, formatDateIndonesian } from '../../utils/time';
+import { calculateWorkingDays } from '../../utils/leave';
 
 interface PengajuanPageProps {
   requests: RequestItem[];
+  user?: User;
+  holidays?: HolidayItem[];
   onAddRequest: (item: RequestItem) => void;
   onCancelRequest: (id: string) => void;
 }
 
 export const PengajuanPage: React.FC<PengajuanPageProps> = ({
   requests,
+  user,
+  holidays = [],
   onAddRequest,
   onCancelRequest,
 }) => {
@@ -35,12 +41,16 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
   // Form states
   const [formType, setFormType] = useState<RequestType>('Izin');
   const [subType, setSubType] = useState('Izin Kepentingan Pribadi');
-  const [startDate, setStartDate] = useState('2026-10-06');
-  const [endDate, setEndDate] = useState('2026-10-06');
+  const [startDate, setStartDate] = useState(getTodayDateString());
+  const [endDate, setEndDate] = useState(getTodayDateString());
   const [daysCount, setDaysCount] = useState(1);
   const [reason, setReason] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Helper for working days calculation with holidays
+  const holidayDates = holidays.map((h) => h.date);
+  const leaveStats = calculateWorkingDays(startDate, endDate, holidayDates);
 
   const tabs: ('Semua' | RequestType)[] = ['Semua', 'Izin', 'Sakit', 'Cuti', 'Dinas', 'Koreksi'];
 
@@ -60,17 +70,17 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
     setTimeout(() => {
       const newReq: RequestItem = {
         id: `req-${Date.now()}`,
-        employeeId: 'EMP-00124',
-        employeeName: 'Budi Santoso',
-        department: 'Technology',
+        employeeId: user?.employeeId || 'EMP-00124',
+        employeeName: user?.name || 'Budi Santoso',
+        department: user?.department || 'Technology',
         type: formType,
         subType: subType || formType,
         startDate,
         endDate,
-        days: daysCount,
+        days: daysCount > 0 ? daysCount : 1,
         reason,
         status: 'Pending',
-        submittedAt: '02 Oct 2026 ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        submittedAt: `${formatDateIndonesian()} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
         attachmentName: attachmentName || (formType === 'Sakit' ? 'surat_keterangan_dokter.jpg' : undefined),
       };
 
@@ -271,7 +281,11 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
                     setFormType(t);
                     if (t === 'Izin') setSubType('Izin Keperluan Pribadi');
                     if (t === 'Sakit') setSubType('Sakit Rawat Jalan');
-                    if (t === 'Cuti') setSubType('Cuti Tahunan');
+                    if (t === 'Cuti') {
+                      setSubType('Cuti Tahunan');
+                      const stats = calculateWorkingDays(startDate, endDate, holidayDates);
+                      setDaysCount(stats.workingDays > 0 ? stats.workingDays : 1);
+                    }
                     if (t === 'Koreksi') setSubType('Lupa Check-Out');
                   }}
                   className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
@@ -303,7 +317,7 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
-                Jumlah Hari
+                Jumlah Hari {formType === 'Cuti' && '(Hari Kerja)'}
               </label>
               <input
                 type="number"
@@ -325,7 +339,14 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
                 type="date"
                 required
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  setStartDate(newStart);
+                  if (formType === 'Cuti') {
+                    const stats = calculateWorkingDays(newStart, endDate, holidayDates);
+                    setDaysCount(stats.workingDays > 0 ? stats.workingDays : 1);
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-medium text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
             </div>
@@ -338,10 +359,25 @@ export const PengajuanPage: React.FC<PengajuanPageProps> = ({
                 type="date"
                 required
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => {
+                  const newEnd = e.target.value;
+                  setEndDate(newEnd);
+                  if (formType === 'Cuti') {
+                    const stats = calculateWorkingDays(startDate, newEnd, holidayDates);
+                    setDaysCount(stats.workingDays > 0 ? stats.workingDays : 1);
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-neutral-200 text-xs font-medium text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
               />
             </div>
+
+            {formType === 'Cuti' && (leaveStats.weekendDays > 0 || leaveStats.holidayDays > 0) && (
+              <div className="sm:col-span-2 text-[11px] text-neutral-600 bg-neutral-50 p-2.5 rounded-xl border border-neutral-200">
+                ℹ️ Dari {leaveStats.totalCalendarDays} hari kalender, terhitung {leaveStats.workingDays} hari kerja efektif
+                {leaveStats.weekendDays > 0 && ` (${leaveStats.weekendDays} hari libur akhir pekan)`}
+                {leaveStats.holidayDays > 0 && ` (${leaveStats.holidayDays} hari libur nasional/bersama)`}.
+              </div>
+            )}
           </div>
 
           <div>

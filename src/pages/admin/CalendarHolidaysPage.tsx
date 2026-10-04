@@ -29,7 +29,7 @@ export const CalendarHolidaysPage: React.FC<CalendarHolidaysPageProps> = ({
   userRole,
   isSuperadmin,
 }) => {
-  const canManage = isSuperadmin ?? (userRole === 'Superadmin');
+  const canManage = isSuperadmin || userRole === 'Superadmin' || userRole === 'Admin' || userRole === 'HR';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
@@ -40,7 +40,7 @@ export const CalendarHolidaysPage: React.FC<CalendarHolidaysPageProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManage) {
-      alert('Akses Ditolak: Hanya akun dengan role Superadmin yang berhak menambahkan hari libur.');
+      alert('Akses Ditolak: Hanya Superadmin, Admin, atau HR yang berhak menambahkan hari libur.');
       return;
     }
 
@@ -67,8 +67,8 @@ export const CalendarHolidaysPage: React.FC<CalendarHolidaysPageProps> = ({
               Kalender Kerja & Hari Libur
             </h2>
             {canManage ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3" /> Akses Superadmin
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3" /> Akses Kelola Aktif
               </span>
             ) : (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 text-neutral-600 flex items-center gap-1">
@@ -93,10 +93,10 @@ export const CalendarHolidaysPage: React.FC<CalendarHolidaysPageProps> = ({
         ) : (
           <div
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-100 text-neutral-500 font-semibold text-xs border border-neutral-200 cursor-not-allowed select-none"
-            title="Hanya Superadmin yang berhak menambahkan hari libur"
+            title="Hanya Superadmin, Admin, atau HR yang berhak menambahkan hari libur"
           >
             <Lock className="w-3.5 h-3.5 text-neutral-400" />
-            <span>+ Add Holiday (Khusus Superadmin)</span>
+            <span>+ Add Holiday (Restricted)</span>
           </div>
         )}
       </div>

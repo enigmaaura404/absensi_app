@@ -9,12 +9,13 @@ import {
   Check,
 } from 'lucide-react';
 import { UserRole } from '../../types';
+import { Permission, ROLE_PERMISSIONS } from '../../config/navigation';
 
 interface PermissionModule {
   name: string;
   key: string;
   permissions: {
-    key: string;
+    key: Permission;
     label: string;
     description: string;
   }[];
@@ -22,97 +23,75 @@ interface PermissionModule {
 
 const MODULES: PermissionModule[] = [
   {
-    name: 'Attendance (Presensi)',
+    name: 'Presensi & Kehadiran',
     key: 'attendance',
     permissions: [
-      { key: 'att_view', label: 'View', description: 'Melihat data presensi harian seluruh karyawan' },
-      { key: 'att_create', label: 'Create', description: 'Melakukan input absensi manual' },
-      { key: 'att_update', label: 'Update', description: 'Koreksi jam hadir dan timestamp absensi' },
-      { key: 'att_delete', label: 'Delete', description: 'Menghapus log presensi dari sistem' },
+      { key: 'attendance.view', label: 'View Attendance', description: 'Melihat log presensi harian karyawan' },
+      { key: 'attendance.create', label: 'Create Attendance', description: 'Melakukan check-in & check-out mandiri/manual' },
     ],
   },
   {
-    name: 'Employees (Karyawan)',
+    name: 'Pengajuan & Persetujuan',
+    key: 'requests',
+    permissions: [
+      { key: 'request.view', label: 'View Requests', description: 'Melihat antrean pengajuan cuti, sakit, dinas' },
+      { key: 'request.create', label: 'Create Request', description: 'Membuat permohonan baru cuti atau izin' },
+      { key: 'request.approve', label: 'Approve Request', description: 'Memberikan persetujuan permohonan bawahan' },
+    ],
+  },
+  {
+    name: 'Karyawan & Tim',
     key: 'employees',
     permissions: [
-      { key: 'emp_view', label: 'View', description: 'Melihat direktori dan profil karyawan' },
-      { key: 'emp_create', label: 'Create', description: 'Mendaftarkan karyawan baru' },
-      { key: 'emp_update', label: 'Update', description: 'Mengedit data kontrak dan profil' },
-      { key: 'emp_delete', label: 'Delete', description: 'Menonaktifkan akun karyawan' },
+      { key: 'employee.view', label: 'View Employees', description: 'Melihat direktori dan profil karyawan' },
+      { key: 'employee.manage', label: 'Manage Employees', description: 'Mendaftarkan, mengedit, atau menonaktifkan karyawan' },
+      { key: 'team.view', label: 'View Team', description: 'Melihat monitoring anggota tim kerja' },
     ],
   },
   {
-    name: 'Approvals (Pusat Persetujuan)',
-    key: 'approvals',
-    permissions: [
-      { key: 'app_view', label: 'View', description: 'Melihat antrean pengajuan cuti, sakit, dinas' },
-      { key: 'app_approve', label: 'Approve', description: 'Memberikan persetujuan permohonan' },
-      { key: 'app_reject', label: 'Reject', description: 'Menolak permohonan karyawan' },
-    ],
-  },
-  {
-    name: 'Reports (Laporan & Analytics)',
+    name: 'Laporan & Payroll',
     key: 'reports',
     permissions: [
-      { key: 'rep_view', label: 'View', description: 'Melihat dashboard rekapitulasi kehadiran' },
-      { key: 'rep_export', label: 'Export', description: 'Download rekap dalam format CSV / Excel' },
+      { key: 'report.view', label: 'View Reports', description: 'Melihat dashboard rekapitulasi kehadiran' },
+      { key: 'report.export', label: 'Export Reports', description: 'Download rekap dalam format CSV / Excel' },
+      { key: 'payroll.view', label: 'View Payroll', description: 'Melihat estimasi rekap payroll berbasis kehadiran' },
     ],
   },
   {
-    name: 'System & Security',
+    name: 'Keamanan & Audit',
+    key: 'security',
+    permissions: [
+      { key: 'audit.view', label: 'View Audit Trail', description: 'Mengakses log forensik audit sistem' },
+      { key: 'security.view', label: 'Security Dashboard', description: 'Melihat status keamanan, device binding & 2FA' },
+      { key: 'roles.manage', label: 'Manage Roles', description: 'Mengubah matriks peran dan izin RBAC' },
+    ],
+  },
+  {
+    name: 'Sistem & Konfigurasi',
     key: 'system',
     permissions: [
-      { key: 'sys_manage', label: 'Manage Settings', description: 'Mengubah konfigurasi geofence dan 2FA' },
-      { key: 'sys_audit', label: 'View Audit Trail', description: 'Mengakses log forensik audit sistem' },
+      { key: 'calendar.manage', label: 'Manage Calendar', description: 'Mengelola jadwal hari libur kerja dan cuti bersama' },
+      { key: 'geofence.manage', label: 'Manage Geofence', description: 'Mengatur radius koordinat dan batas kantor' },
+      { key: 'device.manage', label: 'Manage Devices', description: 'Mereset binding smartphone dan biometrik' },
+      { key: 'integrations.manage', label: 'Manage Integrations', description: 'Mengatur webhook dan integrasi pihak ketiga' },
+      { key: 'system.manage', label: 'Manage System', description: 'Mengatur parameter konfigurasi global aplikasi' },
     ],
   },
 ];
 
 export const RolesPermissionsPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole>('HR');
-  const [permissionsState, setPermissionsState] = useState<Record<string, Record<string, boolean>>>({
-    Superadmin: {
-      att_view: true, att_create: true, att_update: true, att_delete: true,
-      emp_view: true, emp_create: true, emp_update: true, emp_delete: true,
-      app_view: true, app_approve: true, app_reject: true,
-      rep_view: true, rep_export: true,
-      sys_manage: true, sys_audit: true,
-    },
-    Admin: {
-      att_view: true, att_create: true, att_update: true, att_delete: false,
-      emp_view: true, emp_create: true, emp_update: true, emp_delete: false,
-      app_view: true, app_approve: true, app_reject: true,
-      rep_view: true, rep_export: true,
-      sys_manage: true, sys_audit: true,
-    },
-    HR: {
-      att_view: true, att_create: true, att_update: true, att_delete: false,
-      emp_view: true, emp_create: true, emp_update: true, emp_delete: false,
-      app_view: true, app_approve: true, app_reject: true,
-      rep_view: true, rep_export: true,
-      sys_manage: false, sys_audit: true,
-    },
-    Manager: {
-      att_view: true, att_create: false, att_update: false, att_delete: false,
-      emp_view: true, emp_create: false, emp_update: false, emp_delete: false,
-      app_view: true, app_approve: true, app_reject: true,
-      rep_view: true, rep_export: true,
-      sys_manage: false, sys_audit: false,
-    },
-    Supervisor: {
-      att_view: true, att_create: false, att_update: false, att_delete: false,
-      emp_view: true, emp_create: false, emp_update: false, emp_delete: false,
-      app_view: true, app_approve: true, app_reject: true,
-      rep_view: true, rep_export: false,
-      sys_manage: false, sys_audit: false,
-    },
-    Employee: {
-      att_view: false, att_create: false, att_update: false, att_delete: false,
-      emp_view: false, emp_create: false, emp_update: false, emp_delete: false,
-      app_view: false, app_approve: false, app_reject: false,
-      rep_view: false, rep_export: false,
-      sys_manage: false, sys_audit: false,
-    },
+  const [permissionsState, setPermissionsState] = useState<Record<string, Record<string, boolean>>>(() => {
+    const state: Record<string, Record<string, boolean>> = {};
+    const roles: UserRole[] = ['Superadmin', 'Admin', 'HR', 'Manager', 'Supervisor', 'Employee'];
+    roles.forEach((r) => {
+      state[r] = {};
+      const perms = ROLE_PERMISSIONS[r] || [];
+      perms.forEach((p) => {
+        state[r][p] = true;
+      });
+    });
+    return state;
   });
 
   const [isSaved, setIsSaved] = useState(false);

@@ -1267,3 +1267,24 @@ TELEGRAM NOTIFICATION
 ```
 
 Ini membuat sistem tetap **sederhana di sisi pengguna**, tetapi memiliki banyak lapisan validasi di backend.
+
+---
+
+## 25. Status Remediasi Audit Sistem (Baseline Remediation)
+
+Seluruh temuan audit menyeluruh (P0 - P3) telah berhasil diperbaiki pada codebase aplikasi:
+
+| ID Audit | Kategori | Deskripsi Perbaikan | Status |
+|---|---|---|---|
+| **AUD-001** | Privacy / Security | Ownership Isolation pada `RiwayatKehadiranPage.tsx`: Non-admin hanya dapat melihat riwayat kehadiran miliknya sendiri (`employeeId === currentUser.employeeId`). | ✅ FIXED |
+| **AUD-002** | Security | Anti Self-Approval pada `ApprovalPage.tsx`: Pengaju diblokir keras menyetujui/menolak pengajuan miliknya sendiri. | ✅ FIXED |
+| **AUD-003** | Core Business | Geofence & GPS Accuracy Formula: Implementasi rumus Haversine asli pada `src/utils/geo.ts` dengan penolakan GPS accuracy > 50m. | ✅ FIXED |
+| **AUD-004** | Core Business | Dynamic Real-Time Date: Menghilangkan seluruh hardcoded date `'2026-10-02'` dan menggantikannya dengan `getTodayDateString()`. | ✅ FIXED |
+| **AUD-005** | Core Business | Real Work Duration Calculation: Menghilangkan hardcoded `'9j 03m'` dan menghitung selisih check-in & check-out secara akurat (termasuk shift lintas malam). | ✅ FIXED |
+| **AUD-006** | Core Flow | Checkout Guard: Memblokir check-out jika user belum check-in pada hari ini dan mencegah double check-out. | ✅ FIXED |
+| **AUD-007** | Leave & Balance | Atomic Leave Balance Deduction: Approval cuti secara otomatis menghitung hari kerja (skip Sabtu-Minggu & libur nasional) dan memotong `leaveBalance.remaining`. | ✅ FIXED |
+| **AUD-008** | Data Integrity | Identitas Pengajuan Dinamis: `PengajuanPage.tsx` dan `DinasPage.tsx` menggunakan identitas user aktif (`currentUser`). | ✅ FIXED |
+| **AUD-009** | Architecture | Route Guard Protection: Proteksi akses rute non-authorized dengan `hasPermission()` dan layar 403 Forbidden. | ✅ FIXED |
+| **AUD-010** | RBAC Consistency | Kalender Libur: Superadmin, Admin, dan HR diizinkan mengelola libur sesuai permission `calendar.manage`. Matriks RBAC disinkronkan dengan key kanonikal. | ✅ FIXED |
+| **AUD-011** | Quality & Testing | Vitest Integration: Menambahkan test suite otomatis dengan 20 unit tests (`geo.test.ts`, `time.test.ts`, `leave.test.ts`, `navigation.test.ts`). | ✅ FIXED |
+| **AUD-012** | Hygiene & Dependencies| Pembersihan package mati (`@google/genai`, `express`, `dotenv`, `tsx`), penamaan package, dan modernisasi Vite resolver. | ✅ FIXED |

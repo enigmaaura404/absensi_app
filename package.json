@@ -1,36 +1,35 @@
 {
-  "name": "react-example",
+  "name": "absensi-monorepo",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+  "description": "Attendance Management System - Monorepo",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
   },
-  "dependencies": {
-    "@google/genai": "^2.4.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^6.1.1",
-    "lucide-react": "^0.546.0",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "vite": "^8.3.0",
-    "express": "^4.21.2",
-    "dotenv": "^17.2.3",
-    "motion": "^12.23.24"
+  "scripts": {
+    "dev": "npx concurrently -n \"API,WEB\" -c \"blue,green\" \"pnpm run dev:api\" \"pnpm run dev:web\"",
+    "dev:web": "vite --port=3000 --host=0.0.0.0",
+    "dev:api": "pnpm --filter @absensi/api dev",
+    "build": "pnpm --recursive run build && vite build",
+    "build:web": "vite build",
+    "build:api": "pnpm --filter @absensi/api build",
+    "lint": "tsc --noEmit && pnpm --recursive run lint",
+    "test": "pnpm --recursive run test && vitest run",
+    "test:web": "vitest run",
+    "test:api": "pnpm --filter @absensi/api test",
+    "test:e2e": "pnpm --filter @absensi/api test:e2e",
+    "db:generate": "pnpm --filter @absensi/database db:generate",
+    "db:migrate": "pnpm --filter @absensi/database db:migrate",
+    "db:migrate:prod": "pnpm --filter @absensi/database db:migrate:prod",
+    "db:seed": "pnpm --filter @absensi/database db:seed",
+    "db:reset": "pnpm --filter @absensi/database db:reset",
+    "db:studio": "pnpm --filter @absensi/database db:studio",
+    "db:verify": "pnpm --filter @absensi/database db:verify",
+    "install:all": "pnpm install"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
-    "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^5.4.5"
   }
 }
