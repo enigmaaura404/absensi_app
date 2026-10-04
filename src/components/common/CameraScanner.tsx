@@ -17,6 +17,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
   title = 'Posisikan wajah Anda di dalam frame',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [livenessStep, setLivenessStep] = useState<number>(0);
@@ -25,7 +26,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
 
   // Attempt real camera access, fallback gracefully to interactive simulation
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let activeStream: MediaStream | null = null;
     let isMounted = true;
 
     async function initCamera() {
@@ -34,23 +35,25 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
           const userMedia = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: facingMode,
-              width: { ideal: 640 },
-              height: { ideal: 480 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
             audio: false,
           });
           if (isMounted) {
-            stream = userMedia;
+            activeStream = userMedia;
+            setStream(userMedia);
+            setHasCameraPermission(true);
             if (videoRef.current) {
               videoRef.current.srcObject = userMedia;
               videoRef.current.play().catch(() => {});
             }
-            setHasCameraPermission(true);
           }
         } else {
           if (isMounted) setHasCameraPermission(false);
         }
       } catch (err) {
+        console.warn('[CameraScanner] Camera access error:', err);
         if (isMounted) setHasCameraPermission(false);
       }
     }
@@ -59,11 +62,19 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
 
     return () => {
       isMounted = false;
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
       }
     };
   }, [facingMode]);
+
+  // Ensure srcObject is attached when stream or videoRef becomes available
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
 
   // Simulated liveness sequence
   useEffect(() => {
@@ -91,10 +102,10 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
   };
 
   const handleCapture = () => {
-    if (videoRef.current && hasCameraPermission) {
+    if (videoRef.current && hasCameraPermission && videoRef.current.videoWidth > 0) {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth || 480;
+        canvas.width = videoRef.current.videoWidth || 640;
         canvas.height = videoRef.current.videoHeight || 480;
         const ctx = canvas.getContext('2d');
         if (ctx) {
@@ -116,17 +127,23 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({
 
   return (
     <div className="relative w-full max-w-md mx-auto aspect-4/5 sm:aspect-square rounded-2xl overflow-hidden bg-neutral-900 border-2 border-neutral-800 shadow-2xl flex flex-col items-center justify-center">
-      {/* Background Feed (Webcam or High-Def Simulation) */}
-      {hasCameraPermission ? (
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          autoPlay
-          className="absolute inset-0 w-full h-full object-cover -scale-x-100"
-        />
-      ) : (
-        <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neutral-900 via-neutral-800 to-neutral-950 overflow-hidden">
+      {/* Real Webcam Video Stream — ALWAYS mounted so videoRef.current is never null */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        onLoadedMetadata={() => {
+          videoRef.current?.play().catch(() => {});
+        }}
+        className={`absolute inset-0 w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
+          hasCameraPermission ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none -z-10'
+        }`}
+      />
+
+      {/* Fallback Simulation UI when camera permission is not yet granted or denied */}
+      {!hasCameraPermission && (
+        <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neutral-900 via-neutral-800 to-neutral-950 overflow-hidden z-0">
           {/* Simulated realistic camera visual with subtle pulse */}
           <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
           <div className="relative w-48 h-56 rounded-[45%] border-2 border-dashed border-emerald-400/60 flex flex-col items-center justify-center bg-emerald-500/5 backdrop-blur-[2px] transition-all">
