@@ -21,6 +21,7 @@
     "test:api": "pnpm --filter @absensi/api test",
     "test:e2e": "pnpm --filter @absensi/api test:e2e",
     "db:generate": "pnpm --filter @absensi/database db:generate",
+    "db:push": "pnpm --filter @absensi/database db:push",
     "db:migrate": "pnpm --filter @absensi/database db:migrate",
     "db:migrate:prod": "pnpm --filter @absensi/database db:migrate:prod",
     "db:seed": "pnpm --filter @absensi/database db:seed",

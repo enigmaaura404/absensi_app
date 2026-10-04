@@ -3,7 +3,11 @@
  * Handles token management, request headers, error parsing.
  */
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api';
+const rawBaseUrl =
+  (import.meta as any).env?.VITE_API_URL ||
+  (import.meta as any).env?.VITE_API_BASE_URL ||
+  'http://localhost:4000/api';
+const API_BASE_URL = rawBaseUrl.replace(/\/v1\/?$/, '');
 
 class ApiClient {
   private token: string | null = null;

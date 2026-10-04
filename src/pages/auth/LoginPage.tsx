@@ -36,14 +36,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
       });
 
       if (!user) {
-        // Deliberately vague — do not reveal which field is wrong
-        setError('Email atau password salah.');
+        setError('Email atau password salah. Pastikan email & kata sandi sesuai dengan akun terdaftar.');
         return;
       }
 
       onLogin(user);
-    } catch (err) {
-      setError('Terjadi kesalahan sistem. Coba lagi.');
+    } catch (err: any) {
+      setError(err?.message || 'Terjadi kesalahan koneksi server. Coba lagi.');
       console.error('[LoginPage] Authentication error:', err);
     } finally {
       setIsLoading(false);
