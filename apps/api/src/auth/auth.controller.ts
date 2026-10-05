@@ -20,6 +20,26 @@ export class AuthController {
     };
   }
 
+  @Public()
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  async verify2FA(
+    @Body() body: { sessionId: string; otp: string },
+  ): Promise<ApiResponse<LoginResponseDto>> {
+    const data = await this.authService.verify2FA(body.sessionId, body.otp);
+    return { success: true, message: 'Login successful', data };
+  }
+
+  @Public()
+  @Post('2fa/resend')
+  @HttpCode(HttpStatus.OK)
+  async resend2FA(
+    @Body() body: { sessionId: string },
+  ): Promise<ApiResponse<{ sessionId: string }>> {
+    const data = await this.authService.resend2FA(body.sessionId);
+    return { success: true, message: 'OTP resent successfully', data };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async getProfile(@CurrentUser() user: AuthUser): Promise<ApiResponse<AuthUser>> {

@@ -415,6 +415,67 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // =====================================
+  // 2FA Endpoints
+  // =====================================
+  async verify2FA(sessionId: string, otp: string) {
+    return this.request<{
+      accessToken: string;
+      expiresIn: number;
+      user: any;
+    }>('/auth/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, otp }),
+    });
+  }
+
+  async resend2FA(sessionId: string) {
+    return this.request<{ sessionId: string }>('/auth/2fa/resend', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
+  }
+
+  // =====================================
+  // Integration Endpoints (Superadmin only)
+  // =====================================
+  async getIntegrationProviders() {
+    return this.request<any[]>('/admin/integrations/providers');
+  }
+
+  async getIntegrationProvider(type: string) {
+    return this.request<any>(`/admin/integrations/providers/${type}`);
+  }
+
+  async saveIntegrationSettings(type: string, settings: { key: string; value: string }[]) {
+    return this.request<{ saved: number }>(`/admin/integrations/providers/${type}/settings`, {
+      method: 'POST',
+      body: JSON.stringify({ settings }),
+    });
+  }
+
+  async testIntegrationConnection(type: string) {
+    return this.request<{ ok: boolean; message: string; details?: any }>(
+      `/admin/integrations/providers/${type}/test`,
+      { method: 'POST' },
+    );
+  }
+
+  async disconnectIntegration(type: string) {
+    return this.request<null>(`/admin/integrations/providers/${type}`, { method: 'DELETE' });
+  }
+
+  async getNotificationTemplates() {
+    return this.request<any[]>('/admin/integrations/templates');
+  }
+
+  async updateNotificationTemplate(event: string, template: string, isActive: boolean) {
+    return this.request<any>(`/admin/integrations/templates/${event}`, {
+      method: 'PUT',
+      body: JSON.stringify({ template, isActive }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -31,6 +31,7 @@ model User {
   sessions     Session[]
   auditLogs    AuditLog[]   @relation("AuditActor")
   notifications Notification[] @relation("NotificationRecipient")
+  twoFactorSessions TwoFactorSession[]
 }
 
 model Session {
@@ -556,4 +557,104 @@ model SystemSetting {
   label     String?
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+// =============================================================================
+// EXTERNAL INTEGRATIONS & 2FA
+// =============================================================================
+
+model IntegrationProvider {
+  id        String   @id @default(cuid())
+  name      String   // "Telegram Bot", "Google Drive", "Google Sheets"
+  type      String   @unique // TELEGRAM | GOOGLE_DRIVE | GOOGLE_SHEETS
+  status    String   @default("DISCONNECTED") // CONNECTED | DISCONNECTED | ERROR
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings  SystemIntegrationSetting[]
+}
+
+model SystemIntegrationSetting {
+  id             String   @id @default(cuid())
+  providerId     String
+  key            String   // BOT_TOKEN, CHAT_ID, BOT_USERNAME, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, DRIVE_FOLDER_ID, SHEET_ID
+  encryptedValue String
+  isActive       Boolean  @default(true)
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  provider       IntegrationProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, key])
+  @@index([providerId])
+}
+
+model TelegramIntegration {
+  id                 String   @id @default(cuid())
+  botTokenEncrypted  String?
+  botUsername        String?
+  defaultChatId      String?
+  status             String   @default("DISCONNECTED") // CONNECTED | DISCONNECTED | ERROR
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model TelegramUser {
+  id         String   @id @default(cuid())
+  telegramId String   @unique
+  username   String?
+  role       String   @default("SUPERADMIN")
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model TwoFactorSession {
+  id        String   @id @default(cuid())
+  userId    String
+  otpHash   String
+  expiresAt DateTime
+  attempt   Int      @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  event     String   @unique // CHECK_IN | CHECK_OUT | LATE_CHECK_IN | OUTSIDE_GEOFENCE | FAILED_FACE_VERIFICATION | LEAVE_CREATED | LEAVE_APPROVED | LEAVE_REJECTED | FAILED_LOGIN | FAILED_2FA | ROLE_CHANGED | PERMISSION_CHANGED | NEW_DEVICE_LOGIN
+  template  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StorageFile {
+  id          String   @id @default(cuid())
+  ownerType   String   // ATTENDANCE | DOCUMENT | REPORT | BACKUP
+  ownerId     String
+  fileName    String
+  mimeType    String
+  driveFileId String
+  folder      String   // Selfie | Documents | Reports | Backup
+  size        Int      @default(0)
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([ownerType, ownerId])
+  @@index([driveFileId])
+}
+
+model GoogleSheetIntegration {
+  id            String   @id @default(cuid())
+  spreadsheetId String
+  sheetName     String   @default("Attendance Report")
+  status        String   @default("DISCONNECTED") // CONNECTED | DISCONNECTED | ERROR
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

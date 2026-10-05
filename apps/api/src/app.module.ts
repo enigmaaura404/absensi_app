@@ -12,6 +12,7 @@ import { DevicesModule } from './devices/devices.module';
 import { AuditModule } from './audit/audit.module';
 import { SettingsModule } from './settings/settings.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     AuditModule,
     SettingsModule,
     NotificationsModule,
+    IntegrationsModule,
   ],
 })
 export class AppModule {}

@@ -194,6 +194,7 @@ async function main() {
     { code: 'geofence.manage', name: 'Manage Geofences', module: 'geofence' },
     { code: 'roles.manage', name: 'Manage Roles', module: 'system' },
     { code: 'system.manage', name: 'Manage System Settings', module: 'system' },
+    { code: 'system.integration.manage', name: 'Manage External Integrations', module: 'system' },
     { code: 'team.view', name: 'View Team', module: 'team' },
     { code: 'team.approve', name: 'Approve Team Requests', module: 'team' },
   ];
@@ -964,12 +965,56 @@ async function main() {
     { key: 'system.work_end_time', value: '17:00', type: 'string', label: 'Jam Selesai Kerja' },
     { key: 'security.face_similarity_threshold', value: '0.75', type: 'number', label: 'Face Similarity Threshold' },
     { key: 'security.max_gps_accuracy_meters', value: '50', type: 'number', label: 'Max GPS Accuracy (meter)' },
+    { key: 'SUPERADMIN_2FA_REQUIRED', value: 'true', type: 'boolean', label: 'Require Superadmin 2FA' },
+    { key: 'SELFIE_RETENTION_DAYS', value: '90', type: 'number', label: 'Selfie Retention Period (days)' },
+    { key: 'OTP_EXPIRY_SECONDS', value: '300', type: 'number', label: 'OTP Expiry (seconds)' },
+    { key: 'OTP_MAX_ATTEMPTS', value: '5', type: 'number', label: 'OTP Max Attempts' },
   ];
   for (const s of settings) {
     await prisma.systemSetting.upsert({
       where: { key: s.key },
       update: { value: s.value },
       create: s,
+    });
+  }
+
+  // 19. INTEGRATION PROVIDERS
+  console.log('  → Seeding integration providers...');
+  const providers = [
+    { id: 'provider-telegram', name: 'Telegram Bot', type: 'TELEGRAM', status: 'DISCONNECTED' },
+    { id: 'provider-google-drive', name: 'Google Drive', type: 'GOOGLE_DRIVE', status: 'DISCONNECTED' },
+    { id: 'provider-google-sheets', name: 'Google Sheets', type: 'GOOGLE_SHEETS', status: 'DISCONNECTED' },
+  ];
+  for (const p of providers) {
+    await prisma.integrationProvider.upsert({
+      where: { type: p.type },
+      update: {},
+      create: p,
+    });
+  }
+
+  // 20. NOTIFICATION TEMPLATES
+  console.log('  → Seeding notification templates...');
+  const templates = [
+    { event: 'CHECK_IN', template: '✅ *Check-In*\n\nKaryawan: {{employeeName}}\nWaktu: {{time}}\nLokasi: {{location}}\nStatus: {{status}}' },
+    { event: 'CHECK_OUT', template: '🏁 *Check-Out*\n\nKaryawan: {{employeeName}}\nWaktu: {{time}}\nDurasi: {{duration}}\nStatus: {{status}}' },
+    { event: 'LATE_CHECK_IN', template: '⚠️ *Terlambat Check-In*\n\nKaryawan: {{employeeName}}\nWaktu: {{time}}\nKeterlambatan: {{lateMinutes}} menit\nLokasi: {{location}}' },
+    { event: 'OUTSIDE_GEOFENCE', template: '🚫 *Di Luar Area Geofence*\n\nKaryawan: {{employeeName}}\nWaktu: {{time}}\nJarak: {{distance}} meter dari kantor' },
+    { event: 'FAILED_FACE_VERIFICATION', template: '❌ *Gagal Verifikasi Wajah*\n\nKaryawan: {{employeeName}}\nWaktu: {{time}}\nSkor: {{score}}' },
+    { event: 'LEAVE_CREATED', template: '📋 *Pengajuan Cuti Baru*\n\nKaryawan: {{employeeName}}\nJenis: {{leaveType}}\nTanggal: {{startDate}} - {{endDate}}' },
+    { event: 'LEAVE_APPROVED', template: '✅ *Cuti Disetujui*\n\nKaryawan: {{employeeName}}\nJenis: {{leaveType}}\nTanggal: {{startDate}} - {{endDate}}\nDisetujui oleh: {{approverName}}' },
+    { event: 'LEAVE_REJECTED', template: '❌ *Cuti Ditolak*\n\nKaryawan: {{employeeName}}\nJenis: {{leaveType}}\nAlasan: {{reason}}' },
+    { event: 'FAILED_LOGIN', template: '🔴 *Percobaan Login Gagal*\n\nEmail: {{email}}\nWaktu: {{time}}\nIP: {{ipAddress}}\nPercobaan ke: {{attempt}}' },
+    { event: 'FAILED_2FA', template: '🔴 *2FA Gagal*\n\nUser: {{userName}}\nWaktu: {{time}}\nIP: {{ipAddress}}\nPercobaan ke: {{attempt}}' },
+    { event: 'ROLE_CHANGED', template: '👤 *Role Berubah*\n\nKaryawan: {{employeeName}}\nRole Lama: {{oldRole}}\nRole Baru: {{newRole}}\nDiubah oleh: {{actorName}}' },
+    { event: 'PERMISSION_CHANGED', template: '🔐 *Permission Berubah*\n\nKaryawan: {{employeeName}}\nPerubahan: {{changes}}\nDiubah oleh: {{actorName}}' },
+    { event: 'NEW_DEVICE_LOGIN', template: '📱 *Login Dari Perangkat Baru*\n\nUser: {{userName}}\nWaktu: {{time}}\nIP: {{ipAddress}}\nPerangkat: {{device}}' },
+  ];
+  for (const t of templates) {
+    await prisma.notificationTemplate.upsert({
+      where: { event: t.event },
+      update: {},
+      create: t,
     });
   }
 
@@ -1021,7 +1066,7 @@ async function main() {
   console.log('  Departments: 5');
   console.log('  Positions: 10');
   console.log('  Roles: 6');
-  console.log('  Permissions: 28');
+  console.log('  Permissions: 29 (incl. system.integration.manage)');
   console.log('  Users: 15');
   console.log('  Employees: 15');
   console.log('  Shifts: 4');
@@ -1035,7 +1080,9 @@ async function main() {
   console.log('  Attendance Records: ~200 (30 days × 8 employees)');
   console.log('  Requests: 8');
   console.log('  Approval History: 13 entries');
-  console.log('  System Settings: 12');
+  console.log('  System Settings: 16 (incl. 2FA & integration settings)');
+  console.log('  Integration Providers: 3 (Telegram, Google Drive, Google Sheets)');
+  console.log('  Notification Templates: 13');
   console.log('  Audit Logs: 10');
   console.log('  Notifications: 8');
   console.log('');

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   MapPin,
   ShieldCheck,
@@ -9,8 +9,13 @@ import {
   Sparkles,
   ArrowLeft,
   AlertCircle,
+  KeyRound,
+  Send,
+  RefreshCw,
 } from 'lucide-react';
 import { authService } from '../../services/auth/auth.service';
+import { DatabaseAuthProvider } from '../../services/auth/database-auth.provider';
+import type { TwoFactorChallenge } from '../../services/auth/database-auth.provider';
 import { AuthUser } from '../../services/auth/auth.types';
 
 interface LoginPageProps {
@@ -18,11 +23,197 @@ interface LoginPageProps {
   onBackToLanding?: () => void;
 }
 
+// ── 2FA Modal ─────────────────────────────────────────────────────────────────
+interface TwoFAModalProps {
+  challenge: TwoFactorChallenge;
+  onSuccess: (user: AuthUser) => void;
+  onCancel: () => void;
+}
+
+const TwoFAModal: React.FC<TwoFAModalProps> = ({ challenge, onSuccess, onCancel }) => {
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState(challenge.sessionId);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const dbProvider = new DatabaseAuthProvider();
+
+  // Countdown for resend
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newOtp = [...otp];
+    newOtp[index] = value.slice(-1);
+    setOtp(newOtp);
+    setError(null);
+
+    if (value && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const newOtp = [...otp];
+    for (let i = 0; i < 6; i++) newOtp[i] = pasted[i] || '';
+    setOtp(newOtp);
+    inputRefs.current[Math.min(pasted.length, 5)]?.focus();
+  };
+
+  const handleVerify = async () => {
+    const otpStr = otp.join('');
+    if (otpStr.length !== 6) {
+      setError('Masukkan kode OTP 6 digit');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const user = await dbProvider.verify2FA(sessionId, otpStr);
+      if (user) {
+        onSuccess(user);
+      } else {
+        setError('Verifikasi gagal. Silakan coba lagi.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Kode OTP tidak valid atau sudah kadaluarsa.');
+      setOtp(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setIsResending(true);
+    setError(null);
+    try {
+      const newSessionId = await dbProvider.resend2FA(sessionId);
+      setSessionId(newSessionId);
+      setOtp(['', '', '', '', '', '']);
+      setResendCooldown(60);
+      inputRefs.current[0]?.focus();
+    } catch {
+      setError('Gagal mengirim ulang OTP. Coba lagi.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="bg-neutral-950 px-8 py-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4">
+            <KeyRound className="w-7 h-7 text-emerald-400" />
+          </div>
+          <h2 className="text-lg font-bold text-white">Verifikasi 2FA</h2>
+          <p className="text-xs text-neutral-400 mt-1">
+            Kode OTP 6 digit telah dikirim via Telegram
+          </p>
+          {challenge.devOtp && (
+            <div className="mt-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono">
+              🛠 Dev OTP: <strong>{challenge.devOtp}</strong>
+            </div>
+          )}
+        </div>
+
+        {/* Body */}
+        <div className="px-8 py-7 space-y-6">
+          {error && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* OTP Input Grid */}
+          <div className="flex items-center justify-center gap-2" onPaste={handlePaste}>
+            {otp.map((digit, index) => (
+              <input
+                key={index}
+                ref={(el) => { inputRefs.current[index] = el; }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                className="w-11 h-12 text-center text-lg font-bold border-2 border-neutral-200 rounded-xl focus:outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 transition-all"
+                disabled={isLoading}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleVerify}
+            disabled={isLoading || otp.join('').length !== 6}
+            className="w-full py-3 px-4 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-bold tracking-wide shadow transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                <span>Memverifikasi...</span>
+              </>
+            ) : (
+              <>
+                <span>Verifikasi & Masuk</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-neutral-500 hover:text-neutral-800 font-medium transition-colors"
+            >
+              ← Kembali
+            </button>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={isResending || resendCooldown > 0}
+              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-800 font-medium transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+              {resendCooldown > 0 ? `Kirim ulang (${resendCooldown}s)` : 'Kirim ulang OTP'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main Login Page ────────────────────────────────────────────────────────────
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [twoFAChallenge, setTwoFAChallenge] = useState<TwoFactorChallenge | null>(null);
+
+  const dbProvider = new DatabaseAuthProvider();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,20 +221,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
     setIsLoading(true);
 
     try {
-      const user = await authService.authenticate({
+      const result = await dbProvider.authenticate({
         email: email.trim(),
         password: password.trim(),
       });
 
-      if (!user) {
+      if (!result) {
         setError('Email atau password salah. Pastikan email & kata sandi sesuai dengan akun terdaftar.');
         return;
       }
 
-      onLogin(user);
+      // 2FA Challenge
+      if ('requires2FA' in result && result.requires2FA) {
+        setTwoFAChallenge(result as TwoFactorChallenge);
+        return;
+      }
+
+      onLogin(result as AuthUser);
     } catch (err: any) {
       setError(err?.message || 'Terjadi kesalahan koneksi server. Coba lagi.');
-      console.error('[LoginPage] Authentication error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -51,6 +247,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onBackToLanding }
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-neutral-50 text-neutral-900">
+      {/* 2FA Modal */}
+      {twoFAChallenge && (
+        <TwoFAModal
+          challenge={twoFAChallenge}
+          onSuccess={(user) => {
+            setTwoFAChallenge(null);
+            onLogin(user);
+          }}
+          onCancel={() => setTwoFAChallenge(null)}
+        />
+      )}
+
       {/* Left Column: Brand & Feature Overview */}
       <div className="lg:w-1/2 bg-neutral-950 text-white p-8 sm:p-12 lg:p-16 flex flex-col justify-between relative overflow-hidden">
         {/* Subtle grid backdrop */}
